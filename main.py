@@ -61,17 +61,23 @@ def run_bot():
     # TEST ORDER
     # =====================================================
     try:
-
-        response = place_market_order(
+         
+         place_market_order(
+             exchange,
+             config.SYMBOL,
+             "buy",
+             0.00005
+)
+         response = place_market_order(
             exchange,
             config.SYMBOL,
             "buy",
-            0.001
+            0.00005
         )
 
-        if response:
+         if response:
           logging.info(f"Order placed successfully: {response}")
-        else:
+         else:
             logging.error("Order placement failed")
 
     except Exception as e:
