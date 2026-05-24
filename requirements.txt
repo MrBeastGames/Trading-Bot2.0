@@ -5,3 +5,5 @@ streamlit
 matplotlib
 python-dotenv
 requests
+plotly
+streamlit-autorefresh
