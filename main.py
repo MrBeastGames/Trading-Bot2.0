@@ -66,13 +66,13 @@ def run_bot():
              exchange,
              config.SYMBOL,
              "buy",
-             0.00005
+             0.0001
 )
          response = place_market_order(
             exchange,
             config.SYMBOL,
             "buy",
-            0.00005
+            0.0001
         )
 
          if response:
