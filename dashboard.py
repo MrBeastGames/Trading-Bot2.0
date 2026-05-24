@@ -2,22 +2,35 @@ import streamlit as st
 import pandas as pd
 import os
 
-from telegram_utils import send_telegram_message
+# =====================================================
+# SAFE TELEGRAM IMPORT
+# =====================================================
+try:
+    from telegram_utils import send_telegram_message
+except:
+    def send_telegram_message(msg):
+        pass
 
 # =====================================================
 # SAFE CONFIG IMPORT
 # =====================================================
 try:
     import config
-except ModuleNotFoundError:
+except:
     config = None
 
+# =====================================================
+# PAGE CONFIG
+# =====================================================
+st.set_page_config(
+    page_title="Trading Bot Dashboard",
+    layout="wide"
+)
 
 # =====================================================
-# PAGE TITLE
+# TITLE
 # =====================================================
-st.title("Trading Bot Dashboard")
-
+st.title("🚀 Trading Bot Dashboard")
 
 # =====================================================
 # SESSION STATE
@@ -28,126 +41,169 @@ if "bot_running" not in st.session_state:
 if "position" not in st.session_state:
     st.session_state["position"] = None
 
-
 # =====================================================
 # SIDEBAR
 # =====================================================
-st.sidebar.header("Telegram Controls")
+st.sidebar.title("⚙ Controls")
 
-if st.sidebar.button("Send Test Message"):
-    send_telegram_message("📡 Dashboard test message received.")
-    st.sidebar.success("Message sent!")
+# TELEGRAM TEST
+if st.sidebar.button("Send Telegram Test"):
 
+    try:
+        send_telegram_message(
+            "📡 Dashboard test message"
+        )
+        st.sidebar.success("Message sent")
 
-st.sidebar.header("Bot Controls")
+    except Exception as e:
+        st.sidebar.error(str(e))
 
+# START BOT
 if st.sidebar.button("Start Bot"):
+
     st.session_state["bot_running"] = True
-    send_telegram_message("🟢 Bot started from dashboard.")
-    st.sidebar.success("Bot started")
 
+    send_telegram_message(
+        "🟢 Bot started from dashboard"
+    )
+
+# STOP BOT
 if st.sidebar.button("Stop Bot"):
+
     st.session_state["bot_running"] = False
-    send_telegram_message("🔴 Bot stopped from dashboard.")
-    st.sidebar.warning("Bot stopped")
 
+    send_telegram_message(
+        "🔴 Bot stopped from dashboard"
+    )
 
 # =====================================================
-# BOT STATUS
+# STATUS SECTION
 # =====================================================
-st.subheader("Bot Status")
+st.subheader("🤖 Bot Status")
 
 if st.session_state["bot_running"]:
-    st.success("Bot is RUNNING")
+    st.success("RUNNING")
 else:
-    st.error("Bot is STOPPED")
-
+    st.error("STOPPED")
 
 # =====================================================
-# CURRENT POSITION
+# POSITION SECTION
 # =====================================================
-st.subheader("Current Position")
+st.subheader("📌 Current Position")
 
 position = st.session_state["position"]
 
 if position:
     st.write(position)
 else:
-    st.write("No open position.")
-
+    st.info("No open position")
 
 # =====================================================
 # EQUITY CURVE
 # =====================================================
-st.subheader("Equity Curve")
+st.subheader("📈 Equity Curve")
 
-csv_path = "equity_curve.csv"
+if os.path.exists("equity_curve.csv"):
 
-if os.path.exists(csv_path):
     try:
-        equity_df = pd.read_csv(csv_path)
 
-        if "Date" in equity_df.columns:
-            equity_df["Date"] = pd.to_datetime(equity_df["Date"])
-            equity_df.set_index("Date", inplace=True)
+        equity_df = pd.read_csv(
+            "equity_curve.csv"
+        )
 
-        if "equity" in equity_df.columns:
-            st.line_chart(equity_df["equity"])
-            st.dataframe(equity_df.tail(20))
-        else:
-            st.warning("CSV found but no 'equity' column exists.")
-            st.write("Columns:", equity_df.columns.tolist())
+        st.line_chart(equity_df)
+
+        st.dataframe(
+            equity_df.tail(20)
+        )
 
     except Exception as e:
-        st.error(f"Could not load equity data: {e}")
+
+        st.error(
+            f"Equity curve error: {e}"
+        )
 
 else:
-    st.info("No equity_curve.csv found yet.")
+    st.warning(
+        "No equity_curve.csv found"
+    )
 
+# =====================================================
+# TRADE HISTORY
+# =====================================================
+st.subheader("📜 Trade History")
+
+if os.path.exists("trades.csv"):
+
+    try:
+
+        trades_df = pd.read_csv(
+            "trades.csv"
+        )
+
+        st.dataframe(
+            trades_df.tail(20)
+        )
+
+        # METRICS
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Total Trades",
+            len(trades_df)
+        )
+
+        if "pnl" in trades_df.columns:
+
+            winrate = (
+                (trades_df["pnl"] > 0).mean()
+                * 100
+            )
+
+            pnl = trades_df["pnl"].sum()
+
+            col2.metric(
+                "Win Rate",
+                f"{winrate:.2f}%"
+            )
+
+            col3.metric(
+                "Total PnL",
+                f"{pnl:.2f}"
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"Trade history error: {e}"
+        )
+
+else:
+    st.info("No trades logged yet")
 
 # =====================================================
 # CONFIG SNAPSHOT
 # =====================================================
-st.subheader("Config Snapshot")
+st.subheader("⚙ Config Snapshot")
 
-if config is None:
-    st.warning("config.py could not be loaded.")
-else:
-    snapshot = {}
+if config:
 
-    if hasattr(config, "EXCHANGE_ID"):
-        snapshot["EXCHANGE_ID"] = config.EXCHANGE_ID
+    snapshot = {
 
-    if hasattr(config, "SYMBOL"):
-        snapshot["SYMBOL"] = config.SYMBOL
+        "EXCHANGE_ID":
+        getattr(config, "EXCHANGE_ID", ""),
 
-    if hasattr(config, "TIMEFRAME"):
-        snapshot["TIMEFRAME"] = config.TIMEFRAME
+        "SYMBOL":
+        getattr(config, "SYMBOL", ""),
 
-    if hasattr(config, "PAPER_TRADING"):
-        snapshot["PAPER_TRADING"] = config.PAPER_TRADING
+        "TIMEFRAME":
+        getattr(config, "TIMEFRAME", ""),
 
-    if hasattr(config, "API_KEY"):
-        snapshot["API_KEY"] = "****"
-
-    if hasattr(config, "API_SECRET"):
-        snapshot["API_SECRET"] = "****"
-
-    if hasattr(config, "API_PASSWORD"):
-        snapshot["API_PASSWORD"] = "****"
+        "PAPER_TRADING":
+        getattr(config, "PAPER_TRADING", "")
+    }
 
     st.json(snapshot)
-    st.subheader("Trade History")
 
-if os.path.exists("trades.csv"):
-    trades_df = pd.read_csv("trades.csv")
-    st.dataframe(trades_df.tail(20))
 else:
-    st.info("No trades logged yet.")
-if os.path.exists("trades.csv"):
-    df = pd.read_csv("trades.csv")
-
-    st.metric("Total Trades", len(df))
-    st.metric("Winrate", f"{(df['pnl'] > 0).mean() * 100:.2f}%")
-    st.metric("Total PnL", f"{df['pnl'].sum():.2f}")
-
+    st.warning("Config not loaded")
