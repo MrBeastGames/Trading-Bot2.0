@@ -1,123 +1,90 @@
-import logging
-import requests
 import pandas as pd
-import numpy as np
-
 import config
 
-from exchange_handler import (
-    place_market_order,
-    get_exchange
+from trade_logger import log_trade
+
+from position_manager import (
+    clear_position
 )
 
-# =========================================================
-# CREATE EXCHANGE
-# =========================================================
-exchange = get_exchange()
-
 
 # =========================================================
-# TELEGRAM
+# ADD INDICATORS
 # =========================================================
-def send_telegram_message(message: str):
-
-    if not config.USE_TELEGRAM:
-        return
-
-    if not config.TELEGRAM_BOT_TOKEN:
-        logging.error("Telegram bot token missing")
-        return
-
-    if not config.TELEGRAM_CHAT_ID:
-        logging.error("Telegram chat ID missing")
-        return
-
-    url = (
-        f"https://api.telegram.org/bot"
-        f"{config.TELEGRAM_BOT_TOKEN}/sendMessage"
-    )
-
-    payload = {
-        "chat_id": config.TELEGRAM_CHAT_ID,
-        "text": message,
-    }
-
-    try:
-
-        response = requests.post(
-            url,
-            json=payload
-        )
-
-        if response.status_code != 200:
-
-            logging.error(
-                f"Telegram Error: {response.text}"
-            )
-
-    except Exception as e:
-
-        logging.error(
-            f"Telegram Exception: {e}"
-        )
-
-
-# =========================================================
-# INDICATORS
-# =========================================================
-def add_indicators(df: pd.DataFrame):
+def add_indicators(
+    df: pd.DataFrame
+) -> pd.DataFrame:
 
     df = df.copy()
 
-    # SMA
-    df["short_sma"] = (
+    # =====================================================
+    # FAST EMA
+    # =====================================================
+    df["ema_fast"] = (
         df["close"]
-        .rolling(9)
+        .ewm(
+            span=50,
+            adjust=False
+        )
         .mean()
     )
 
-    df["long_sma"] = (
+    # =====================================================
+    # SLOW EMA
+    # =====================================================
+    df["ema_slow"] = (
         df["close"]
-        .rolling(21)
+        .ewm(
+            span=200,
+            adjust=False
+        )
         .mean()
     )
 
+    # =====================================================
     # RSI
+    # =====================================================
     delta = df["close"].diff()
 
-    gain = (
-        delta.where(delta > 0, 0)
-        .rolling(14)
-        .mean()
+    gain = delta.clip(lower=0)
+
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(14).mean()
+
+    avg_loss = loss.rolling(14).mean()
+
+    rs = avg_gain / (
+        avg_loss + 1e-9
     )
 
-    loss = (
-        -delta.where(delta < 0, 0)
-        .rolling(14)
-        .mean()
+    df["rsi"] = (
+        100 - (100 / (1 + rs))
     )
 
-    rs = gain / loss.replace(0, np.nan)
-
-    df["rsi"] = 100 - (
-        100 / (1 + rs)
-    )
-
+    # =====================================================
     # ATR
+    # =====================================================
     high_low = (
         df["high"] - df["low"]
     )
 
     high_close = (
-        df["high"] - df["close"].shift()
+        df["high"]
+        - df["close"].shift()
     ).abs()
 
     low_close = (
-        df["low"] - df["close"].shift()
+        df["low"]
+        - df["close"].shift()
     ).abs()
 
     tr = pd.concat(
-        [high_low, high_close, low_close],
+        [
+            high_low,
+            high_close,
+            low_close
+        ],
         axis=1
     ).max(axis=1)
 
@@ -125,10 +92,12 @@ def add_indicators(df: pd.DataFrame):
         tr.rolling(14).mean()
     )
 
-    # Higher timeframe SMA
-    df["htf_sma"] = (
-        df["close"]
-        .rolling(50)
+    # =====================================================
+    # VOLUME MOVING AVERAGE
+    # =====================================================
+    df["volume_ma"] = (
+        df["volume"]
+        .rolling(20)
         .mean()
     )
 
@@ -136,32 +105,124 @@ def add_indicators(df: pd.DataFrame):
 
 
 # =========================================================
-# TRAILING STOP
+# ENTRY LOGIC
 # =========================================================
-def update_trailing_stop(position, price):
+def handle_entry(
+    window_df,
+    price,
+    rm,
+    position
+):
 
-    if position is None:
+    if position is not None:
         return position
 
-    if position["side"] == "long":
+    latest = window_df.iloc[-1]
 
-        new_stop = (
-            price *
-            (1 - config.TRAILING_STOP_PCT)
+    previous = window_df.iloc[-2]
+
+    # =====================================================
+    # EMA VALUES
+    # =====================================================
+    fast_now = latest["ema_fast"]
+
+    slow_now = latest["ema_slow"]
+
+    fast_prev = previous["ema_fast"]
+
+    slow_prev = previous["ema_slow"]
+
+    # =====================================================
+    # RSI
+    # =====================================================
+    rsi_now = latest["rsi"]
+
+    # =====================================================
+    # ATR
+    # =====================================================
+    atr_now = latest["atr"]
+
+    # =====================================================
+    # VOLUME
+    # =====================================================
+    volume_now = latest["volume"]
+
+    volume_avg = latest["volume_ma"]
+
+    # =====================================================
+    # SAFETY CHECKS
+    # =====================================================
+    if pd.isna(rsi_now):
+        return position
+
+    if pd.isna(atr_now):
+        return position
+
+    if pd.isna(volume_avg):
+        return position
+
+    if atr_now <= 0:
+        return position
+
+    # =====================================================
+    # VOLUME FILTER
+    # =====================================================
+    high_volume = (
+        volume_now > volume_avg
+    )
+
+    # =====================================================
+    # LONG ENTRY CONDITIONS
+    # =====================================================
+    bullish_cross = (
+        fast_prev < slow_prev
+        and fast_now > slow_now
+    )
+
+    bullish_trend = (
+        fast_now > slow_now
+    )
+
+    good_rsi = (
+        45 <= rsi_now <= 70
+    )
+
+    # =====================================================
+    # FINAL LONG ENTRY
+    # =====================================================
+    if (
+        bullish_cross
+        and bullish_trend
+        and good_rsi
+        and high_volume
+    ):
+
+        amount = rm.get_position_size(
+            price
         )
 
-        if new_stop > position["stop"]:
-            position["stop"] = new_stop
+        if amount <= 0:
+            return position
 
-    elif position["side"] == "short":
+        atr_mult_sl = 1.5
 
-        new_stop = (
-            price *
-            (1 + config.TRAILING_STOP_PCT)
-        )
+        atr_mult_tp = 3.0
 
-        if new_stop < position["stop"]:
-            position["stop"] = new_stop
+        return {
+            "side": "long",
+            "entry_price": price,
+            "amount": amount,
+            "stop_loss": (
+                price
+                - atr_mult_sl * atr_now
+            ),
+            "take_profit": (
+                price
+                + atr_mult_tp * atr_now
+            ),
+            "trail": None,
+            "atr": atr_now,
+        }
 
     return position
 
@@ -169,246 +230,175 @@ def update_trailing_stop(position, price):
 # =========================================================
 # EXIT LOGIC
 # =========================================================
-def handle_exit(position, price, rm):
+def handle_exit(
+    position,
+    price,
+    rm
+):
 
     if position is None:
         return None
 
     side = position["side"]
+
     entry = position["entry_price"]
+
     amount = position["amount"]
 
-    stop = position["stop"]
-    tp = position["take_profit"]
+    stop_loss = position["stop_loss"]
 
-    closed = False
+    take_profit = position["take_profit"]
 
-    # LONG EXIT
-    if side == "long":
+    trail = position.get("trail")
 
-        if price <= stop or price >= tp:
-
-            pnl = amount * (
-                price - entry
-            )
-
-            if config.PAPER_TRADING:
-                rm.capital += pnl
-
-            logging.info(
-                f"LONG EXIT at {price:.2f} | "
-                f"PnL: {pnl:.2f}"
-            )
-
-            send_telegram_message(
-                f"📉 LONG EXIT at "
-                f"{price:.2f} | "
-                f"PnL: {pnl:.2f}"
-            )
-
-            closed = True
-
-    # SHORT EXIT
-    elif side == "short":
-
-        if price >= stop or price <= tp:
-
-            pnl = amount * (
-                entry - price
-            )
-
-            if config.PAPER_TRADING:
-                rm.capital += pnl
-
-            logging.info(
-                f"SHORT EXIT at {price:.2f} | "
-                f"PnL: {pnl:.2f}"
-            )
-
-            send_telegram_message(
-                f"📈 SHORT EXIT at "
-                f"{price:.2f} | "
-                f"PnL: {pnl:.2f}"
-            )
-
-            closed = True
-
-    return None if closed else position
-
-
-# =========================================================
-# FILTERS
-# =========================================================
-def _passes_filters(row_now):
-
-    if pd.isna(row_now["atr"]):
-        return False
-
-    if pd.isna(row_now["htf_sma"]):
-        return False
-
-    atr_ratio = (
-        row_now["atr"] /
-        row_now["close"]
+    # =====================================================
+    # CALCULATE PNL
+    # =====================================================
+    pnl = amount * (
+        price - entry
     )
 
-    if atr_ratio < 0.002:
-        return False
+    # =====================================================
+    # BREAK EVEN PROTECTION
+    # =====================================================
+    risk_distance = (
+        entry - stop_loss
+    )
 
-    return True
+    reward_distance = (
+        price - entry
+    )
+
+    if reward_distance >= risk_distance:
+
+        position["stop_loss"] = max(
+            stop_loss,
+            entry
+        )
+
+    # =====================================================
+    # STOP LOSS
+    # =====================================================
+    if (
+        side == "long"
+        and price <= position["stop_loss"]
+    ):
+
+        rm.realize(pnl)
+
+        log_trade(
+            side=side,
+            entry_price=entry,
+            exit_price=price,
+            amount=amount,
+            pnl=pnl,
+            equity=rm.capital,
+        )
+
+        clear_position()
+
+        return None
+
+    # =====================================================
+    # TAKE PROFIT
+    # =====================================================
+    if (
+        side == "long"
+        and price >= take_profit
+    ):
+
+        rm.realize(pnl)
+
+        log_trade(
+            side=side,
+            entry_price=entry,
+            exit_price=price,
+            amount=amount,
+            pnl=pnl,
+            equity=rm.capital,
+        )
+
+        clear_position()
+
+        return None
+
+    # =====================================================
+    # TRAILING STOP
+    # =====================================================
+    if (
+        trail is not None
+        and price <= trail
+    ):
+
+        pnl = amount * (
+            trail - entry
+        )
+
+        rm.realize(pnl)
+
+        log_trade(
+            side=side,
+            entry_price=entry,
+            exit_price=trail,
+            amount=amount,
+            pnl=pnl,
+            equity=rm.capital,
+        )
+
+        clear_position()
+
+        return None
+
+    return position
 
 
 # =========================================================
-# ENTRY LOGIC
+# TRAILING STOP UPDATE
 # =========================================================
-def handle_entry(df, price, rm, position):
+def update_trailing_stop(
+    position,
+    price
+):
 
-    if position is not None:
+    if position is None:
+        return None
+
+    if position["side"] != "long":
         return position
 
-    row_now = df.iloc[-1]
-    row_prev = df.iloc[-2]
+    atr = position.get("atr")
 
-    short_now = row_now["short_sma"]
-    long_now = row_now["long_sma"]
+    if atr is None:
+        return position
 
-    short_prev = row_prev["short_sma"]
-    long_prev = row_prev["long_sma"]
-
-    rsi_now = row_now["rsi"]
-    htf_sma_now = row_now["htf_sma"]
-
-    if any(pd.isna([
-        short_now,
-        long_now,
-        short_prev,
-        long_prev,
-        rsi_now,
-        htf_sma_now
-    ])):
-        return None
-
-    if not _passes_filters(row_now):
-        return None
+    if atr <= 0:
+        return position
 
     # =====================================================
-    # LONG ENTRY
+    # DYNAMIC ATR TRAILING STOP
     # =====================================================
-    if (
-        short_now > long_now
-        and short_prev <= long_prev
-        and rsi_now < 70
-        and price > htf_sma_now
-    ):
+    trail_mult = 1.2
 
-        stop = (
-            price *
-            (1 - config.STOP_LOSS_PCT)
-        )
-
-        amount = rm.get_position_size(
-            price,
-            stop
-        )
-
-        if amount > 0:
-
-            if config.PAPER_TRADING:
-                rm.capital -= amount * price
-
-            # REAL BUY ORDER
-            if not config.PAPER_TRADING:
-
-                place_market_order(
-                    exchange,
-                    config.SYMBOL,
-                    "buy",
-                    amount
-                )
-
-            pos = {
-                "side": "long",
-                "entry_price": price,
-                "amount": amount,
-                "stop": stop,
-                "take_profit": (
-                    price *
-                    (1 + config.TAKE_PROFIT_PCT)
-                ),
-            }
-
-            logging.info(
-                f"LONG ENTRY at "
-                f"{price:.2f} | "
-                f"Size: {amount}"
-            )
-
-            send_telegram_message(
-                f"📈 LONG ENTRY at "
-                f"{price:.2f} | "
-                f"Size: {amount}"
-            )
-
-            return pos
+    new_trail = (
+        price
+        - trail_mult * atr
+    )
 
     # =====================================================
-    # SHORT ENTRY
+    # INITIALIZE TRAIL
     # =====================================================
-    if (
-        short_now < long_now
-        and short_prev >= long_prev
-        and rsi_now > 30
-        and price < htf_sma_now
-    ):
+    if position["trail"] is None:
 
-        stop = (
-            price *
-            (1 + config.STOP_LOSS_PCT)
+        position["trail"] = (
+            new_trail
         )
 
-        amount = rm.get_position_size(
-            price,
-            stop
+    else:
+
+        # ONLY MOVE TRAIL UP
+        position["trail"] = max(
+            position["trail"],
+            new_trail
         )
 
-        if amount > 0:
-
-            if config.PAPER_TRADING:
-                rm.capital -= amount * price
-
-            # REAL SELL ORDER
-            if not config.PAPER_TRADING:
-
-                place_market_order(
-                    exchange,
-                    config.SYMBOL,
-                    "sell",
-                    amount
-                )
-
-            pos = {
-                "side": "short",
-                "entry_price": price,
-                "amount": amount,
-                "stop": stop,
-                "take_profit": (
-                    price *
-                    (1 - config.TAKE_PROFIT_PCT)
-                ),
-            }
-
-            logging.info(
-                f"SHORT ENTRY at "
-                f"{price:.2f} | "
-                f"Size: {amount}"
-            )
-
-            send_telegram_message(
-                f"📉 SHORT ENTRY at "
-                f"{price:.2f} | "
-                f"Size: {amount}"
-            )
-
-            return pos
-
-    return None
+    return position

@@ -14,16 +14,16 @@ def get_exchange():
     try:
 
         exchange = ccxt.bitget({
-            "apiKey": config.API_KEY,
-            "secret": config.API_SECRET,
-            "password": config.API_PASSWORD,
-            "enableRateLimit": True,
+    "apiKey": config.API_KEY,
+    "secret": config.API_SECRET,
+    "password": config.API_PASSWORD,
 
-            "options": {
-                "defaultType": "swap",
-                "defaultSubType": "linear"
-            }
-        })
+    "options": {
+        "defaultType": "swap",
+        "defaultMarginMode": "cross",
+        "defaultMarginCoin": "USDT"   # 🔥 ADD THIS
+    }
+})
 
         exchange.load_markets()
         exchange.set_leverage(
@@ -128,3 +128,44 @@ if __name__ == "__main__":
     if exchange:
 
         print(exchange.fetch_balance())
+# =====================================================
+# CHECK SLIPPAGE CONDITIONS
+# =====================================================
+def check_slippage(
+    exchange,
+    symbol
+):
+
+    try:
+
+        orderbook = exchange.fetch_order_book(
+            symbol
+        )
+
+        bid = orderbook["bids"][0][0]
+
+        ask = orderbook["asks"][0][0]
+
+        spread_pct = (
+            (ask - bid)
+            / bid
+        ) * 100
+
+        if spread_pct > config.MAX_SPREAD_PCT:
+
+            print(
+                f"Spread too high: "
+                f"{spread_pct:.4f}%"
+            )
+
+            return False
+
+        return True
+
+    except Exception as e:
+
+        print(
+            f"Slippage check error: {e}"
+        )
+
+        return False

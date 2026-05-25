@@ -1,13 +1,20 @@
 import time
 import logging
+import os
 
 import config
 import trade_logger
+
+from position_manager import (
+    save_position,
+    load_position,
+)
 
 from exchange_handler import (
     get_exchange,
     fetch_ohlcv,
     place_market_order,
+    check_slippage,
 )
 
 from strategy import (
@@ -18,7 +25,13 @@ from strategy import (
 )
 
 from risk_manager import RiskManager
-from telegram_utils import send_telegram_message
+
+from telegram_utils import (
+    send_telegram_message,
+    send_telegram_photo,
+    send_equity_update,
+    send_error_alert,
+)
 
 
 # =========================================================
@@ -41,54 +54,44 @@ def run_bot():
     exchange = get_exchange()
 
     if not exchange:
-        logging.error("CONNECTION FAILED")
-        return
 
-    logging.info("CONNECTED SUCCESSFULLY")
-
-    # =====================================================
-    # TEST BALANCE
-    # =====================================================
-    try:
-        balance = exchange.fetch_balance()
-        logging.info("Balance fetched successfully")
-        print(balance)
-
-    except Exception as e:
-        logging.error(f"Balance Error: {e}")
-
-    # =====================================================
-    # TEST ORDER
-    # =====================================================
-    try:
-         
-         place_market_order(
-             exchange,
-             config.SYMBOL,
-             "buy",
-             0.0001
-)
-         response = place_market_order(
-            exchange,
-            config.SYMBOL,
-            "buy",
-            0.0001
+        logging.error(
+            "CONNECTION FAILED"
         )
 
-         if response:
-          logging.info(f"Order placed successfully: {response}")
-         else:
-            logging.error("Order placement failed")
+        return
+
+    logging.info(
+        "CONNECTED SUCCESSFULLY"
+    )
+
+    # =====================================================
+    # FETCH FUTURES BALANCE
+    # =====================================================
+    try:
+
+        balance = exchange.fetch_balance({
+            "type": "swap"
+        })
+
+        logging.info(
+            "Balance fetched successfully"
+        )
+
+        print(balance)
+
+        if config.USE_TELEGRAM:
+
+            send_telegram_message(
+                f"💰 *LIVE BALANCE*\n\n"
+                f"`{balance}`"
+            )
 
     except Exception as e:
 
-        logging.error("Test Order Error:")
-        logging.error(str(e))
-
-        if hasattr(e, "args") and len(e.args) > 0:
-            logging.error(
-                f"Error details: {e.args[0]}"
-            )
+        logging.error(
+            f"Balance Error: {e}"
+        )
 
     # =====================================================
     # CREATE RISK MANAGER
@@ -98,11 +101,25 @@ def run_bot():
     )
 
     # =====================================================
-    # CURRENT POSITION
+    # LOAD SAVED POSITION
     # =====================================================
-    position = None
+    position = load_position()
 
-    logging.info("Trading bot started.")
+    if position:
+
+        logging.info(
+            "Restored saved position."
+        )
+
+    else:
+
+        logging.info(
+            "No saved position found."
+        )
+
+    logging.info(
+        "Trading bot started."
+    )
 
     # =====================================================
     # TELEGRAM START MESSAGE
@@ -110,7 +127,10 @@ def run_bot():
     if config.USE_TELEGRAM:
 
         send_telegram_message(
-            "🟢 Trading bot started."
+            "🟢 *TRADING BOT ONLINE*\n\n"
+            "✅ Exchange Connected\n"
+            "✅ Strategy Loaded\n"
+            "✅ Risk Manager Active\n"
         )
 
     # =====================================================
@@ -127,9 +147,22 @@ def run_bot():
                 exchange,
                 config.SYMBOL,
                 config.TIMEFRAME,
-                limit=100
+                limit=300
             )
 
+            # =================================================
+            # SAVE MARKET DATA
+            # =================================================
+            if df is not None:
+
+                df.to_csv(
+                    "market_data.csv",
+                    index=False
+                )
+
+            # =================================================
+            # EMPTY DATA CHECK
+            # =================================================
             if df is None or df.empty:
 
                 logging.warning(
@@ -137,12 +170,14 @@ def run_bot():
                 )
 
                 time.sleep(5)
+
                 continue
 
             # =================================================
             # ADD INDICATORS
             # =================================================
             df = add_indicators(df)
+
             df = df.dropna()
 
             if len(df) < 3:
@@ -152,6 +187,7 @@ def run_bot():
                 )
 
                 time.sleep(5)
+
                 continue
 
             # =================================================
@@ -173,13 +209,42 @@ def run_bot():
             )
 
             # =================================================
-            # HANDLE EXIT
+            # HANDLE EXITS
             # =================================================
             position = handle_exit(
                 position,
                 price,
                 rm
             )
+
+            # =================================================
+            # RISK MANAGER CHECK
+            # =================================================
+            if not rm.can_trade():
+
+                logging.warning(
+                    "Cooldown active. Waiting..."
+                )
+
+                time.sleep(5)
+
+                continue
+
+            # =================================================
+            # SLIPPAGE PROTECTION
+            # =================================================
+            if not check_slippage(
+                exchange,
+                config.SYMBOL
+            ):
+
+                logging.warning(
+                    "Slippage protection blocked trade."
+                )
+
+                time.sleep(5)
+
+                continue
 
             # =================================================
             # HANDLE ENTRY
@@ -200,56 +265,135 @@ def run_bot():
             ):
 
                 side = new_position["side"]
+
                 amount = new_position["amount"]
 
-                # =============================================
-                # LONG POSITION
-                # =============================================
-                if side == "long":
+                order = None
 
-                    place_market_order(
-                        exchange,
-                        config.SYMBOL,
-                        "buy",
-                        amount
+                # =============================================
+                # LIVE TRADING SAFETY
+                # =============================================
+                if not config.ENABLE_LIVE_TRADING:
+
+                    logging.warning(
+                        "LIVE TRADING DISABLED"
                     )
 
-                # =============================================
-                # SHORT POSITION
-                # =============================================
-                elif side == "short":
+                    time.sleep(5)
 
-                    place_market_order(
-                        exchange,
-                        config.SYMBOL,
-                        "sell",
-                        amount
+                    continue
+
+                # =============================================
+                # PAPER TRADING MODE
+                # =============================================
+                if config.PAPER_TRADING:
+
+                    logging.info(
+                        "PAPER TRADE EXECUTED"
                     )
 
-                # =============================================
-                # LOG TRADE
-                # =============================================
-                trade_logger.log_trade(
-                    side=side,
-                    price=price,
-                    amount=amount
-                )
+                    order = {
+                        "paper_trade": True,
+                        "side": side,
+                        "price": price,
+                        "amount": amount
+                    }
 
                 # =============================================
-                # TELEGRAM ALERT
+                # LIVE TRADING MODE
                 # =============================================
-                if config.USE_TELEGRAM:
+                else:
 
-                    send_telegram_message(
-                        f"✅ {side.upper()} ORDER EXECUTED\n"
-                        f"Price: {price}\n"
-                        f"Amount: {amount}"
+                    # LONG
+                    if side == "long":
+
+                        order = place_market_order(
+                            exchange,
+                            config.SYMBOL,
+                            "buy",
+                            amount
+                        )
+
+                    # SHORT
+                    elif side == "short":
+
+                        order = place_market_order(
+                            exchange,
+                            config.SYMBOL,
+                            "sell",
+                            amount
+                        )
+
+                # =============================================
+                # ORDER SUCCESS
+                # =============================================
+                if order is not None:
+
+                    # LOG TRADE
+                    trade_logger.log_trade(
+                        side=side,
+                        price=price,
+                        amount=amount
                     )
 
-                # =============================================
-                # SAVE POSITION
-                # =============================================
-                position = new_position
+                    # RECORD TRADE
+                    rm.record_trade()
+
+                    # EQUITY UPDATE
+                    send_equity_update(
+                        rm.capital
+                    )
+
+                    # SAVE POSITION
+                    position = new_position
+
+                    save_position(position)
+
+                    # =========================================
+                    # SEND TRADE SCREENSHOT
+                    # =========================================
+                    if os.path.exists(
+                        "trade_chart.png"
+                    ):
+
+                        send_telegram_photo(
+                            "trade_chart.png",
+                            caption=(
+                                f"📸 Trade Screenshot\n\n"
+                                f"📈 Pair: {config.SYMBOL}\n"
+                                f"📊 Side: {side.upper()}\n"
+                                f"💰 Price: {price}"
+                            )
+                        )
+
+                    # =========================================
+                    # TELEGRAM ALERT
+                    # =========================================
+                    if config.USE_TELEGRAM:
+
+                        trade_type = (
+                            "🚀 LIVE TRADE"
+                        )
+
+                        if config.PAPER_TRADING:
+
+                            trade_type = (
+                                "🧪 PAPER TRADE"
+                            )
+
+                        send_telegram_message(
+                            f"{trade_type}\n\n"
+                            f"📈 Pair: `{config.SYMBOL}`\n"
+                            f"📊 Side: *{side.upper()}*\n"
+                            f"💰 Entry Price: `{price}`\n"
+                            f"📦 Amount: `{amount}`"
+                        )
+
+                else:
+
+                    logging.error(
+                        "Order placement failed"
+                    )
 
             # =================================================
             # STATUS LOGGING
@@ -284,8 +428,9 @@ def run_bot():
 
             if config.USE_TELEGRAM:
 
-                send_telegram_message(
-                    f"⚠️ Bot Error:\n{e}"
+                send_error_alert(
+                    str(e),
+                    severity="HIGH"
                 )
 
             time.sleep(5)
@@ -309,7 +454,7 @@ if __name__ == "__main__":
         if config.USE_TELEGRAM:
 
             send_telegram_message(
-                "🔴 Bot stopped manually."
+                "🔴 *BOT STOPPED MANUALLY*"
             )
 
     except Exception as e:
@@ -321,5 +466,6 @@ if __name__ == "__main__":
         if config.USE_TELEGRAM:
 
             send_telegram_message(
-                f"🔴 Bot crashed:\n{e}"
+                f"🔴 *BOT CRASHED*\n\n"
+                f"`{e}`"
             )

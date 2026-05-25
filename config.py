@@ -4,15 +4,24 @@ from dotenv import load_dotenv
 # LOAD .ENV FILE
 load_dotenv()
 
+# =====================================================
+# PAPER TRADING
+# =====================================================
+PAPER_TRADING = True
 
 # =========================================================
 # EXCHANGE
 # =========================================================
 EXCHANGE_ID = "bitget"
 
-SYMBOL = "BTC/USDT:USDT"
+SYMBOL = "SOL/USDT"
 
 TIMEFRAME = "1m"
+
+# =====================================================
+# LIVE TRADING SAFETY
+# =====================================================
+ENABLE_LIVE_TRADING = False
 
 
 # =========================================================
@@ -20,7 +29,18 @@ TIMEFRAME = "1m"
 # =========================================================
 INITIAL_CAPITAL = 50
 
-MAX_RISK_PER_TRADE = 0.0001
+# =========================
+# RISK MANAGEMENT
+# =========================
+RISK_PER_TRADE_USD = 2
+
+MAX_DAILY_LOSS_USD = 10
+
+MAX_TRADES_PER_DAY = 10
+
+LEVERAGE = 5
+
+TRADE_COOLDOWN_SECONDS = 300
 
 
 # =========================================================
@@ -70,3 +90,10 @@ API_PASSWORD = "1274712747"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# =====================================================
+# SLIPPAGE PROTECTION
+# =====================================================
+
+MAX_SPREAD_PCT = 0.15
+
+MAX_VOLATILITY_PCT = 1.0

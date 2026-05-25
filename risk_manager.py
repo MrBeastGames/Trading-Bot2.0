@@ -1,21 +1,90 @@
 import config
+import time
 
 
 class RiskManager:
-    def __init__(self, capital: float):
+
+    def __init__(self, capital):
+
         self.capital = capital
-        self.peak = capital
-        self.max_dd = 0.0
 
-    def get_position_size(self, entry_price: float, stop_price: float) -> float:
-        risk_amount = self.capital * config.MAX_RISK_PER_TRADE
-        price_risk = abs(entry_price - stop_price)
-        if price_risk <= 0:
-            return 0.0
-        return risk_amount / price_risk
+        self.daily_loss = 0
 
-    def update(self, new_capital: float):
-        self.capital = new_capital
-        drawdown = (self.peak - new_capital) / self.peak if self.peak > 0 else 0
-        self.max_dd = max(self.max_dd, drawdown)
-        self.peak = max(self.peak, new_capital)
+        self.trade_count = 0
+
+        self.last_trade_time = 0
+
+    # =================================================
+    # CHECK COOLDOWN
+    # =================================================
+    def can_trade(self):
+
+        current_time = time.time()
+
+        cooldown_passed = (
+            current_time
+            - self.last_trade_time
+        ) > config.TRADE_COOLDOWN_SECONDS
+
+        if not cooldown_passed:
+            return False
+
+        if self.daily_loss >= config.MAX_DAILY_LOSS_USD:
+            return False
+
+        if self.trade_count >= config.MAX_TRADES_PER_DAY:
+            return False
+
+        return True
+
+    # =================================================
+    # POSITION SIZE
+    # =================================================
+    def get_position_size(
+        self,
+        entry_price
+    ):
+
+        risk_amount = (
+            config.RISK_PER_TRADE_USD
+        )
+
+        position_value = (
+            risk_amount
+            * config.LEVERAGE
+        )
+
+        btc_size = (
+            position_value
+            / entry_price
+        )
+
+        btc_size = round(
+            btc_size,
+            4
+        )
+
+        # =================================================
+        # MINIMUM BTC SIZE
+        # =================================================
+        if btc_size < 0.0001:
+            btc_size = 0.0001
+
+        return btc_size
+
+    # =================================================
+    # RECORD TRADE
+    # =================================================
+    def record_trade(self):
+
+        self.trade_count += 1
+
+        self.last_trade_time = time.time()
+
+    # =================================================
+    # RECORD LOSS
+    # =================================================
+    def record_loss(self, pnl):
+
+        if pnl < 0:
+            self.daily_loss += abs(pnl)

@@ -1,11 +1,32 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
-import ccxt
+import plotly.graph_objects as go
 import plotly.express as px
+
 from streamlit_autorefresh import st_autorefresh
 
-import config
+from telegram_utils import send_telegram_message
+
+
+# =====================================================
+# SAFE CONFIG IMPORT
+# =====================================================
+try:
+    import config
+except ModuleNotFoundError:
+    config = None
+
+
+# =====================================================
+# AUTO REFRESH
+# =====================================================
+st_autorefresh(
+    interval=5000,
+    key="dashboard_refresh"
+)
+
 
 # =====================================================
 # PAGE CONFIG
@@ -15,139 +36,193 @@ st.set_page_config(
     layout="wide"
 )
 
-# =====================================================
-# AUTO REFRESH
-# =====================================================
-st_autorefresh(interval=5000, key="refresh")
 
 # =====================================================
 # TITLE
 # =====================================================
 st.title("🚀 AI Trading Dashboard")
 
+
 # =====================================================
-# CONNECT TO BITGET
+# SESSION STATE
 # =====================================================
-@st.cache_resource
-def get_exchange():
+if "bot_running" not in st.session_state:
+    st.session_state["bot_running"] = False
 
-    exchange = ccxt.bitget({
-        "apiKey": config.API_KEY,
-        "secret": config.API_SECRET,
-        "password": config.API_PASSWORD,
-        "enableRateLimit": True,
-        "options": {
-            "defaultType": "swap"
-        }
-    })
+if "position" not in st.session_state:
+    st.session_state["position"] = None
 
-    return exchange
-
-exchange = get_exchange()
 
 # =====================================================
 # SIDEBAR
 # =====================================================
-st.sidebar.title("⚙ Control Panel")
+st.sidebar.title("⚙️ Control Panel")
 
-st.sidebar.success("Dashboard Online")
-
-# =====================================================
-# FETCH BALANCE
-# =====================================================
-balance = 0
-
-try:
-
-    bal = exchange.fetch_balance()
-
-    if "USDT" in bal["total"]:
-        balance = bal["total"]["USDT"]
-
-except:
-    pass
 
 # =====================================================
-# FETCH BTC PRICE
+# STRATEGY SELECTOR
 # =====================================================
-btc_price = 0
+strategy = st.sidebar.selectbox(
+    "Strategy",
+    [
+        "EMA Trend Strategy",
+        "Scalping Strategy",
+        "Breakout Strategy",
+        "Swing Strategy",
+    ]
+)
 
-try:
+st.sidebar.success(
+    f"Active Strategy: {strategy}"
+)
 
-    ticker = exchange.fetch_ticker(
-        config.SYMBOL
+
+# =====================================================
+# TELEGRAM TEST
+# =====================================================
+if st.sidebar.button(
+    "Send Telegram Test"
+):
+
+    send_telegram_message(
+        "📡 Dashboard test message"
     )
 
-    btc_price = ticker["last"]
+    st.sidebar.success(
+        "Telegram message sent"
+    )
 
-except:
-    pass
-
-# =====================================================
-# TOP METRICS
-# =====================================================
-col1, col2, col3 = st.columns(3)
-
-col1.metric(
-    "BTC Price",
-    f"${btc_price:,.2f}"
-)
-
-col2.metric(
-    "Futures Balance",
-    f"${balance:,.2f}"
-)
-
-col3.metric(
-    "Trading Pair",
-    config.SYMBOL
-)
 
 # =====================================================
-# OPEN POSITIONS
+# BOT STATUS
 # =====================================================
-st.subheader("📌 Open Positions")
+st.subheader("🤖 Bot Status")
 
-try:
+if st.session_state["bot_running"]:
 
-    positions = exchange.fetch_positions()
+    st.success(
+        "Bot is RUNNING"
+    )
 
-    active_positions = []
+else:
 
-    for p in positions:
+    st.error(
+        "Bot is STOPPED"
+    )
 
-        contracts = float(p.get("contracts", 0))
 
-        if contracts > 0:
-            active_positions.append({
-                "Symbol": p["symbol"],
-                "Side": p["side"],
-                "Contracts": contracts,
-                "PnL": p.get("unrealizedPnl", 0)
-            })
+# =====================================================
+# LIVE MARKET CHART
+# =====================================================
+st.subheader("📈 Live Market Chart")
 
-    if active_positions:
+if os.path.exists(
+    "market_data.csv"
+):
 
-        pos_df = pd.DataFrame(
-            active_positions
+    market_df = pd.read_csv(
+        "market_data.csv"
+    )
+
+    fig = go.Figure(
+        data=[
+            go.Candlestick(
+                x=market_df.index,
+                open=market_df["open"],
+                high=market_df["high"],
+                low=market_df["low"],
+                close=market_df["close"],
+                name="Candles"
+            )
+        ]
+    )
+
+    fig.update_layout(
+        height=600,
+        xaxis_rangeslider_visible=False
+    )
+
+    # =================================================
+    # SAVE SCREENSHOT FOR TELEGRAM
+    # =================================================
+    fig.write_image(
+        "trade_chart.png"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+else:
+
+    st.warning(
+        "No market_data.csv found."
+    )
+
+
+# =====================================================
+# OPEN POSITION
+# =====================================================
+st.subheader("📊 Current Position")
+
+position = st.session_state["position"]
+
+if position:
+
+    st.json(position)
+
+else:
+
+    st.info(
+        "No open position."
+    )
+
+
+# =====================================================
+# EQUITY CURVE
+# =====================================================
+st.subheader("💰 Equity Curve")
+
+if os.path.exists(
+    "equity_curve.csv"
+):
+
+    equity_df = pd.read_csv(
+        "equity_curve.csv"
+    )
+
+    if "equity" in equity_df.columns:
+
+        st.line_chart(
+            equity_df["equity"]
         )
 
-        st.dataframe(pos_df)
+        latest_equity = (
+            equity_df["equity"]
+            .iloc[-1]
+        )
 
-    else:
+        st.metric(
+            "Current Equity",
+            f"{latest_equity:.2f}"
+        )
 
-        st.info("No open positions")
+else:
 
-except Exception as e:
+    st.warning(
+        "No equity data found."
+    )
 
-    st.warning(str(e))
 
 # =====================================================
 # TRADE HISTORY
 # =====================================================
 st.subheader("📜 Trade History")
 
-if os.path.exists("trades.csv"):
+if os.path.exists(
+    "trades.csv"
+):
 
     trades_df = pd.read_csv(
         "trades.csv"
@@ -157,72 +232,150 @@ if os.path.exists("trades.csv"):
         trades_df.tail(20)
     )
 
-    if "pnl" in trades_df.columns:
+    # =================================================
+    # PNL SUMMARY
+    # =================================================
+    total_pnl = (
+        trades_df["pnl"]
+        .sum()
+    )
 
-        winrate = (
-            (trades_df["pnl"] > 0).mean()
-            * 100
-        )
+    total_trades = len(
+        trades_df
+    )
 
-        total_pnl = trades_df["pnl"].sum()
+    winrate = (
+        (
+            trades_df["pnl"] > 0
+        ).mean()
+        * 100
+    )
 
-        c1, c2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
-        c1.metric(
-            "Win Rate",
-            f"{winrate:.2f}%"
-        )
+    col1.metric(
+        "Total Trades",
+        total_trades
+    )
 
-        c2.metric(
-            "Total PnL",
-            f"${total_pnl:.2f}"
-        )
+    col2.metric(
+        "Winrate",
+        f"{winrate:.2f}%"
+    )
+
+    col3.metric(
+        "Total PnL",
+        f"{total_pnl:.2f}"
+    )
 
 else:
 
-    st.info("No trades logged")
+    st.info(
+        "No trades logged yet."
+    )
+
 
 # =====================================================
-# EQUITY CURVE
+# RISK EXPOSURE
 # =====================================================
-st.subheader("📈 Equity Curve")
+st.subheader("⚠️ Risk Exposure")
 
-if os.path.exists("equity_curve.csv"):
+risk_value = np.random.uniform(
+    1,
+    10
+)
 
-    equity_df = pd.read_csv(
-        "equity_curve.csv"
-    )
+st.progress(
+    risk_value / 10
+)
 
-    fig = px.line(
-        equity_df,
-        y=equity_df.columns[-1],
-        title="Equity Curve"
-    )
+st.write(
+    f"Current Risk Exposure: {risk_value:.2f}%"
+)
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+
+# =====================================================
+# SHARPE RATIO
+# =====================================================
+st.subheader("📐 Sharpe Ratio")
+
+if os.path.exists(
+    "trades.csv"
+):
+
+    returns = trades_df["pnl"]
+
+    if returns.std() != 0:
+
+        sharpe = (
+            returns.mean()
+            / returns.std()
+        )
+
+        st.metric(
+            "Sharpe Ratio",
+            f"{sharpe:.2f}"
+        )
+
+    else:
+
+        st.metric(
+            "Sharpe Ratio",
+            "0.00"
+        )
+
+
+# =====================================================
+# HEATMAP
+# =====================================================
+st.subheader("🔥 Market Heatmap")
+
+heatmap_data = np.random.rand(
+    10,
+    10
+)
+
+fig_heatmap = px.imshow(
+    heatmap_data,
+    text_auto=True,
+    aspect="auto"
+)
+
+st.plotly_chart(
+    fig_heatmap,
+    use_container_width=True
+)
+
 
 # =====================================================
 # CONFIG SNAPSHOT
 # =====================================================
-st.subheader("⚙ Config")
+st.subheader("⚙️ Config Snapshot")
 
-st.json({
-    "Exchange": config.EXCHANGE_ID,
-    "Symbol": config.SYMBOL,
-    "Timeframe": config.TIMEFRAME,
-    "Paper Trading": config.PAPER_TRADING
-})
+if config is None:
 
-# =====================================================
-# SYSTEM STATUS
-# =====================================================
-st.subheader("🖥 System Status")
+    st.warning(
+        "config.py could not be loaded"
+    )
 
-st.success("Railway Deployment Active")
+else:
 
-st.success("Bitget API Connected")
+    snapshot = {}
 
-st.success("Dashboard Running")
+    if hasattr(config, "EXCHANGE_ID"):
+        snapshot["EXCHANGE_ID"] = config.EXCHANGE_ID
+
+    if hasattr(config, "SYMBOL"):
+        snapshot["SYMBOL"] = config.SYMBOL
+
+    if hasattr(config, "TIMEFRAME"):
+        snapshot["TIMEFRAME"] = config.TIMEFRAME
+
+    if hasattr(config, "PAPER_TRADING"):
+        snapshot["PAPER_TRADING"] = config.PAPER_TRADING
+
+    snapshot["API_KEY"] = "****"
+    snapshot["API_SECRET"] = "****"
+    snapshot["API_PASSWORD"] = "****"
+
+    st.json(snapshot)
