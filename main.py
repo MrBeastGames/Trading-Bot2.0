@@ -5,10 +5,6 @@ import os
 import config
 import trade_logger
 
-from position_manager import (
-    save_position,
-    load_position,
-)
 
 from exchange_handler import (
     get_exchange,
@@ -33,6 +29,7 @@ from telegram_utils import (
     send_error_alert,
 )
 
+position = None
 
 # =========================================================
 # LOGGING
@@ -42,11 +39,16 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
 # =========================================================
 # LIVE TRADING LOOP
 # =========================================================
 def run_bot():
+
+    # =============================================
+    # FIX POSITION VARIABLE
+    # =============================================
+    position = None
+
 
     # =====================================================
     # CREATE EXCHANGE
@@ -323,11 +325,6 @@ def run_bot():
                     send_equity_update(
                         rm.capital
                     )
-
-                    # SAVE POSITION
-                    position = new_position
-
-                    save_position(position)
 
                     # =========================================
                     # SEND TRADE SCREENSHOT
