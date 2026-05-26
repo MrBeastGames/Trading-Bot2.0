@@ -78,7 +78,6 @@ EQUITY_PNG_PATH = "equity_curve.png"
 # =========================================================
 # BITGET API
 # =========================================================
-id="v6pxmq"
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 API_PASSWORD = os.getenv("API_PASSWORD")
