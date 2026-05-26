@@ -28,7 +28,7 @@ def get_exchange():
 
         exchange.load_markets()
 
-        # ⚠️ IMPORTANT FIX: set swap-specific params
+        # Set default margin coin
         exchange.options["defaultMarginCoin"] = "USDT"
 
         logging.info("BITGET CONNECTED")
@@ -38,11 +38,14 @@ def get_exchange():
     except Exception as e:
 
         logging.error(f"CONNECTION FAILED: {e}")
+
         return None
+
 
 # =====================================================
 # FETCH OHLCV
 # =====================================================
+
 def fetch_ohlcv(
     exchange,
     symbol,
@@ -82,12 +85,18 @@ def fetch_ohlcv(
 # =====================================================
 # PLACE MARKET ORDER
 # =====================================================
-def place_market_order(exchange, symbol, side, amount):
+
+def place_market_order(
+    exchange,
+    symbol,
+    side,
+    amount
+):
 
     try:
 
         params = {
-            "marginCoin": "USDT",   # 🔥 MUST BE HERE
+            "marginCoin": "USDT",
             "marginMode": "cross"
         }
 
@@ -108,21 +117,14 @@ def place_market_order(exchange, symbol, side, amount):
 
         print("ORDER ERROR")
         print(e)
+
         return None
 
-# =====================================================
-# TEST CONNECTION
-# =====================================================
-if __name__ == "__main__":
 
-    exchange = get_exchange()
-
-    if exchange:
-
-        print(exchange.fetch_balance())
 # =====================================================
 # CHECK SLIPPAGE CONDITIONS
 # =====================================================
+
 def check_slippage(
     exchange,
     symbol
@@ -130,18 +132,12 @@ def check_slippage(
 
     try:
 
-        orderbook = exchange.fetch_order_book(
-            symbol
-        )
+        orderbook = exchange.fetch_order_book(symbol)
 
         bid = orderbook["bids"][0][0]
-
         ask = orderbook["asks"][0][0]
 
-        spread_pct = (
-            (ask - bid)
-            / bid
-        ) * 100
+        spread_pct = ((ask - bid) / bid) * 100
 
         if spread_pct > config.MAX_SPREAD_PCT:
 
@@ -156,8 +152,27 @@ def check_slippage(
 
     except Exception as e:
 
-        print(
-            f"Slippage check error: {e}"
-        )
+        print(f"Slippage check error: {e}")
 
         return False
+
+
+# =====================================================
+# TEST CONNECTION
+# =====================================================
+
+if __name__ == "__main__":
+
+    exchange = get_exchange()
+
+    if exchange:
+
+        try:
+
+            balance = exchange.fetch_balance()
+
+            print(balance)
+
+        except Exception as e:
+
+            logging.error(f"Balance Error: {e}")
