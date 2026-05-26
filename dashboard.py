@@ -36,7 +36,7 @@ st.set_page_config(
 # AUTO REFRESH
 # =====================================================
 st_autorefresh(
-    interval=5000,
+    interval=15000,
     key="dashboard_refresh"
 )
 
@@ -96,13 +96,26 @@ else:
 # =====================================================
 st.subheader("📈 Live Market Chart")
 
+# =====================================================
+# MARKET DATA
+# =====================================================
 if os.path.exists("market_data.csv"):
 
-    market_df = pd.read_csv("market_data.csv")
+    market_df = pd.read_csv(
+        "market_data.csv"
+    ).tail(300)
 
-    required_cols = ["open", "high", "low", "close"]
+    required_cols = [
+        "open",
+        "high",
+        "low",
+        "close"
+    ]
 
-    if all(col in market_df.columns for col in required_cols):
+    if all(
+        col in market_df.columns
+        for col in required_cols
+    ):
 
         fig = go.Figure(
             data=[
@@ -111,24 +124,28 @@ if os.path.exists("market_data.csv"):
                     open=market_df["open"],
                     high=market_df["high"],
                     low=market_df["low"],
-                    close=market_df["close"],
-                    name="Candles"
+                    close=market_df["close"]
                 )
             ]
         )
 
-        fig.update_layout(
-            height=600,
-            xaxis_rangeslider_visible=False
+        st.plotly_chart(
+            fig,
+            use_container_width=True
         )
 
-        st.plotly_chart(fig, use_container_width=True)
-
     else:
-        st.warning("market_data.csv is missing OHLC columns")
+
+        st.warning(
+            "market_data.csv is missing OHLC columns"
+        )
 
 else:
-    st.warning("No market_data.csv found.")
+
+    st.warning(
+        "No market_data.csv found."
+    )
+
 
 # =====================================================
 # OPEN POSITION
@@ -149,7 +166,13 @@ st.subheader("💰 Equity Curve")
 
 if os.path.exists("equity_curve.csv"):
 
-    equity_df = pd.read_csv("equity_curve.csv")
+    equity_df = pd.read_csv(
+        "equity_curve.csv"
+    ).tail(300)
+
+else:
+
+    equity_df = pd.DataFrame() 
 
     if "equity" in equity_df.columns:
 
@@ -162,8 +185,8 @@ if os.path.exists("equity_curve.csv"):
             f"{latest_equity:.2f}"
         )
 
-else:
-    st.warning("No equity data found.")
+    else:
+        st.warning("No equity data found.")
 
 # =====================================================
 # TRADE HISTORY
@@ -172,7 +195,13 @@ st.subheader("📜 Trade History")
 
 if os.path.exists("trades.csv"):
 
-    trades_df = pd.read_csv("trades.csv")
+    trades_df = pd.read_csv(
+        "trades.csv"
+    ).tail(100)
+
+else:
+
+    trades_df = pd.DataFrame()
 
     st.dataframe(trades_df.tail(20))
 
@@ -188,8 +217,8 @@ if os.path.exists("trades.csv"):
         col2.metric("Winrate", f"{winrate:.2f}%")
         col3.metric("Total PnL", f"{total_pnl:.2f}")
 
-else:
-    st.info("No trades logged yet.")
+    else:
+     st.info("No trades logged yet.")
 
 # =====================================================
 # RISK EXPOSURE
