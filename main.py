@@ -64,6 +64,11 @@ else:
 logging.info(
     "Trading bot started."
 )
+# =========================================================
+# SAVE BOT STATUS
+# =========================================================
+with open("bot_status.txt", "w") as f:
+    f.write("RUNNING")
 
 # =========================================================
 # LIVE TRADING LOOP
@@ -439,6 +444,8 @@ if __name__ == "__main__":
         run_bot()
 
     except KeyboardInterrupt:
+        with open("bot_status.txt", "w") as f:
+         f.write("STOPPED")
 
         logging.info(
             "Bot stopped manually."
@@ -451,6 +458,8 @@ if __name__ == "__main__":
             )
 
     except Exception as e:
+        with open("bot_status.txt", "w") as f:
+         f.write("STOPPED")
 
         logging.error(
             f"Fatal Error: {e}"

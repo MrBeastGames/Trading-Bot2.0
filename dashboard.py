@@ -86,8 +86,16 @@ if st.sidebar.button("Send Telegram Test"):
 # =====================================================
 st.subheader("🤖 Bot Status")
 
-if st.session_state["bot_running"]:
-    st.success("Bot is RUNNING")
+if os.path.exists("bot_status.txt"):
+
+    with open("bot_status.txt", "r") as f:
+        status = f.read().strip()
+
+    if status == "RUNNING":
+        st.success("Bot is RUNNING")
+    else:
+        st.error("Bot is STOPPED")
+
 else:
     st.error("Bot is STOPPED")
 
