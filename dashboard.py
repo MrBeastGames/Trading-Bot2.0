@@ -64,40 +64,58 @@ st_autorefresh(
 # =====================================================
 # AUTHENTICATION
 # =====================================================
+DASHBOARD_USERNAME = "admin"
+DASHBOARD_PASSWORD = "admin123"
+
 if config is not None:
 
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
+    DASHBOARD_USERNAME = getattr(
+        config,
+        "DASHBOARD_USERNAME",
+        "admin"
+    )
 
-    if not st.session_state["authenticated"]:
+    DASHBOARD_PASSWORD = getattr(
+        config,
+        "DASHBOARD_PASSWORD",
+        "admin123"
+    )
 
-        st.title("🔐 Admin Login")
+if "authenticated" not in st.session_state:
 
-        username = st.text_input("Username")
-        password = st.text_input(
-            "Password",
-            type="password"
-        )
+    st.session_state["authenticated"] = False
 
-        if st.button("Login"):
+if not st.session_state["authenticated"]:
 
-            if (
-                username == config.DASHBOARD_USERNAME
-                and password == config.DASHBOARD_PASSWORD
-            ):
+    st.title("🔐 Admin Login")
 
-                st.session_state[
-                    "authenticated"
-                ] = True
+    username = st.text_input("Username")
 
-                st.rerun()
+    password = st.text_input(
+        "Password",
+        type="password"
+    )
 
-            else:
-                st.error(
-                    "Invalid credentials"
-                )
+    if st.button("Login"):
 
-        st.stop()
+        if (
+            username == DASHBOARD_USERNAME
+            and password == DASHBOARD_PASSWORD
+        ):
+
+            st.session_state[
+                "authenticated"
+            ] = True
+
+            st.rerun()
+
+        else:
+
+            st.error(
+                "Invalid credentials"
+            )
+
+    st.stop()
 
 # =====================================================
 # DATABASE CONNECTION
