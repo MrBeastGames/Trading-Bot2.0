@@ -320,22 +320,24 @@ def run_symbol_bot(symbol):
 
                     positions[symbol] = new_position
 
-                    trade_logger.log_trade(
-                        side=side,
-                        price=price,
-                        amount=amount
+                trade_logger.log_trade(
+                       symbol=symbol,
+                       side=side,
+                       price=price,
+                       amount=amount,
+                       pnl=0
                     )
 
-                    rm.record_trade()
+                rm.record_trade()
 
-                    send_equity_update(
+                send_equity_update(
                         rm.capital
                     )
 
                     # =========================================
                     # TELEGRAM ALERT
                     # =========================================
-                    if config.USE_TELEGRAM:
+                if config.USE_TELEGRAM:
 
                         trade_type = "🚀 LIVE TRADE"
 
@@ -353,7 +355,7 @@ def run_symbol_bot(symbol):
                     # =========================================
                     # TRADE SCREENSHOT
                     # =========================================
-                    if os.path.exists(
+                if os.path.exists(
                         "trade_chart.png"
                     ):
 
