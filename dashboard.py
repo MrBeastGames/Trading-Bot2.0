@@ -9,6 +9,11 @@ import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
 
 # =====================================================
+# SQLITE SAFETY
+# =====================================================
+sqlite3.enable_callback_tracebacks(True)
+
+# =====================================================
 # SAFE IMPORTS
 # =====================================================
 try:
@@ -37,17 +42,21 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+
     .block-container {
         padding-top: 1rem;
         padding-bottom: 1rem;
     }
 
     @media (max-width: 768px) {
+
         .block-container {
             padding-left: 1rem;
             padding-right: 1rem;
         }
+
     }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -89,7 +98,9 @@ if not st.session_state["authenticated"]:
 
     st.title("🔐 Admin Login")
 
-    username = st.text_input("Username")
+    username = st.text_input(
+        "Username"
+    )
 
     password = st.text_input(
         "Password",
@@ -120,10 +131,21 @@ if not st.session_state["authenticated"]:
 # =====================================================
 # DATABASE CONNECTION
 # =====================================================
-conn = sqlite3.connect(
-    "trading_bot.db",
-    check_same_thread=False
-)
+try:
+
+    conn = sqlite3.connect(
+        "trading_bot.db",
+        check_same_thread=False,
+        timeout=30
+    )
+
+except Exception as e:
+
+    st.error(
+        f"Database connection failed: {e}"
+    )
+
+    st.stop()
 
 # =====================================================
 # TITLE
@@ -177,28 +199,43 @@ if st.sidebar.button(
 # =====================================================
 st.subheader("🤖 Bot Status")
 
-if os.path.exists("bot_status.txt"):
+if os.path.exists(
+    "bot_status.txt"
+):
 
-    with open("bot_status.txt", "r") as f:
+    try:
 
-        status = f.read().strip()
+        with open(
+            "bot_status.txt",
+            "r"
+        ) as f:
 
-    if status == "RUNNING":
+            status = (
+                f.read().strip()
+            )
 
-        st.success(
-            "Bot is RUNNING"
-        )
+        if status == "RUNNING":
 
-    else:
+            st.success(
+                "Bot is RUNNING"
+            )
+
+        else:
+
+            st.error(
+                "Bot is STOPPED"
+            )
+
+    except Exception:
 
         st.error(
-            "Bot is STOPPED"
+            "Could not read bot status."
         )
 
 else:
 
     st.error(
-        "Bot is STOPPED"
+        "Bot status file missing."
     )
 
 # =====================================================
@@ -206,10 +243,12 @@ else:
 # =====================================================
 st.subheader("💰 Live PnL")
 
+trades_df = pd.DataFrame()
+
 try:
 
     trades_df = pd.read_sql_query(
-        "SELECT * FROM trades",
+        "SELECT * FROM trades LIMIT 100",
         conn
     )
 
@@ -217,9 +256,11 @@ try:
 
         if "pnl" in trades_df.columns:
 
-            total_pnl = trades_df[
-                "pnl"
-            ].sum()
+            total_pnl = (
+                trades_df["pnl"]
+                .fillna(0)
+                .sum()
+            )
 
             total_trades = len(
                 trades_df
@@ -227,7 +268,8 @@ try:
 
             winrate = (
                 (
-                    trades_df["pnl"] > 0
+                    trades_df["pnl"]
+                    > 0
                 ).mean()
             ) * 100
 
@@ -248,12 +290,6 @@ try:
                 f"{winrate:.2f}%"
             )
 
-        else:
-
-            st.warning(
-                "PnL column missing in database."
-            )
-
     else:
 
         st.info(
@@ -263,7 +299,7 @@ try:
 except Exception as e:
 
     st.warning(
-        f"Database Error: {e}"
+        f"Trades Database Error: {e}"
     )
 
 # =====================================================
@@ -274,7 +310,7 @@ st.subheader("📊 Open Positions")
 try:
 
     positions_df = pd.read_sql_query(
-        "SELECT * FROM positions",
+        "SELECT * FROM positions LIMIT 100",
         conn
     )
 
@@ -304,7 +340,9 @@ st.subheader("📈 Live Market Chart")
 
 market_file = "market_data.csv"
 
-if os.path.exists(market_file):
+if os.path.exists(
+    market_file
+):
 
     try:
 
@@ -336,6 +374,10 @@ if os.path.exists(market_file):
                 ]
             )
 
+            fig.update_layout(
+                height=600
+            )
+
             st.plotly_chart(
                 fig,
                 use_container_width=True
@@ -364,7 +406,9 @@ else:
 # =====================================================
 st.subheader("💹 Equity Curve")
 
-if os.path.exists("equity_curve.csv"):
+if os.path.exists(
+    "equity_curve.csv"
+):
 
     try:
 
@@ -374,16 +418,18 @@ if os.path.exists("equity_curve.csv"):
 
         if (
             not equity_df.empty
-            and "equity" in equity_df.columns
+            and "equity"
+            in equity_df.columns
         ):
 
             st.line_chart(
                 equity_df["equity"]
             )
 
-            latest_equity = equity_df[
-                "equity"
-            ].iloc[-1]
+            latest_equity = (
+                equity_df["equity"]
+                .iloc[-1]
+            )
 
             st.metric(
                 "Current Equity",
@@ -407,24 +453,12 @@ if os.path.exists("equity_curve.csv"):
 # =====================================================
 st.subheader("📜 Trade History")
 
-if os.path.exists("trades.csv"):
+if not trades_df.empty:
 
-    try:
-
-        csv_trades_df = pd.read_csv(
-            "trades.csv"
-        ).tail(100)
-
-        st.dataframe(
-            csv_trades_df,
-            use_container_width=True
-        )
-
-    except Exception as e:
-
-        st.warning(
-            f"Trade History Error: {e}"
-        )
+    st.dataframe(
+        trades_df.tail(20),
+        use_container_width=True
+    )
 
 # =====================================================
 # RISK EXPOSURE
@@ -436,7 +470,9 @@ risk_value = np.random.uniform(
     10
 )
 
-st.progress(risk_value / 10)
+st.progress(
+    risk_value / 10
+)
 
 st.write(
     f"Current Risk Exposure: "
@@ -452,10 +488,14 @@ try:
 
     if (
         not trades_df.empty
-        and "pnl" in trades_df.columns
+        and "pnl"
+        in trades_df.columns
     ):
 
-        returns = trades_df["pnl"]
+        returns = (
+            trades_df["pnl"]
+            .fillna(0)
+        )
 
         if returns.std() != 0:
 
@@ -522,7 +562,10 @@ else:
         "PAPER_TRADING",
     ]:
 
-        if hasattr(config, attr):
+        if hasattr(
+            config,
+            attr
+        ):
 
             snapshot[attr] = getattr(
                 config,
@@ -538,4 +581,9 @@ else:
 # =====================================================
 # CLEANUP
 # =====================================================
-conn.close()
+try:
+
+    conn.close()
+
+except Exception:
+    pass
