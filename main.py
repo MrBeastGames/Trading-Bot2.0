@@ -100,26 +100,6 @@ def run_bot():
         config.INITIAL_CAPITAL
     )
 
-    # =====================================================
-    # LOAD SAVED POSITION
-    # =====================================================
-    position = load_position()
-
-    if position:
-
-        logging.info(
-            "Restored saved position."
-        )
-
-    else:
-
-        logging.info(
-            "No saved position found."
-        )
-
-    logging.info(
-        "Trading bot started."
-    )
 
     # =====================================================
     # TELEGRAM START MESSAGE
