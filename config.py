@@ -56,7 +56,7 @@ TRAILING_STOP_PCT = 0.02
 # =========================================================
 # MODES
 # =========================================================
-PAPER_TRADING = False
+PAPER_TRADING = True
 
 BACKTESTING = True
 

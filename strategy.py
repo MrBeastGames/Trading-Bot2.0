@@ -7,7 +7,6 @@ from position_manager import (
     clear_position
 )
 
-
 # =========================================================
 # ADD INDICATORS
 # =========================================================
@@ -114,8 +113,11 @@ def handle_entry(
     position
 ):
 
+    # =====================================================
+    # ALREADY IN POSITION
+    # =====================================================
     if position is not None:
-        return position
+        return None
 
     latest = window_df.iloc[-1]
 
@@ -153,16 +155,16 @@ def handle_entry(
     # SAFETY CHECKS
     # =====================================================
     if pd.isna(rsi_now):
-        return position
+        return None
 
     if pd.isna(atr_now):
-        return position
+        return None
 
     if pd.isna(volume_avg):
-        return position
+        return None
 
     if atr_now <= 0:
-        return position
+        return None
 
     # =====================================================
     # VOLUME FILTER
@@ -184,8 +186,17 @@ def handle_entry(
     )
 
     good_rsi = (
-        45 <= rsi_now <= 70
+        40 <= rsi_now <= 75
     )
+
+    # =====================================================
+    # DEBUG LOGS
+    # =====================================================
+    print("FAST NOW:", fast_now)
+    print("SLOW NOW:", slow_now)
+    print("RSI:", rsi_now)
+    print("HIGH VOLUME:", high_volume)
+    print("BULLISH CROSS:", bullish_cross)
 
     # =====================================================
     # FINAL LONG ENTRY
@@ -202,13 +213,13 @@ def handle_entry(
         )
 
         if amount <= 0:
-            return position
+            return None
 
         atr_mult_sl = 1.5
 
         atr_mult_tp = 3.0
 
-        return {
+        new_position = {
             "side": "long",
             "entry_price": price,
             "amount": amount,
@@ -224,7 +235,14 @@ def handle_entry(
             "atr": atr_now,
         }
 
-    return position
+        print(
+            "NEW TRADE SIGNAL:",
+            new_position
+        )
+
+        return new_position
+
+    return None
 
 
 # =========================================================
@@ -252,28 +270,18 @@ def handle_exit(
     trail = position.get("trail")
 
     # =====================================================
-    # CALCULATE PNL
+    # LONG PNL
     # =====================================================
-    pnl = amount * (
-        price - entry
-    )
+    if side == "long":
 
-    # =====================================================
-    # BREAK EVEN PROTECTION
-    # =====================================================
-    risk_distance = (
-        entry - stop_loss
-    )
+        pnl = amount * (
+            price - entry
+        )
 
-    reward_distance = (
-        price - entry
-    )
+    else:
 
-    if reward_distance >= risk_distance:
-
-        position["stop_loss"] = max(
-            stop_loss,
-            entry
+        pnl = amount * (
+            entry - price
         )
 
     # =====================================================
@@ -281,7 +289,7 @@ def handle_exit(
     # =====================================================
     if (
         side == "long"
-        and price <= position["stop_loss"]
+        and price <= stop_loss
     ):
 
         rm.realize(pnl)
@@ -296,6 +304,8 @@ def handle_exit(
         )
 
         clear_position()
+
+        print("STOP LOSS HIT")
 
         return None
 
@@ -319,6 +329,8 @@ def handle_exit(
         )
 
         clear_position()
+
+        print("TAKE PROFIT HIT")
 
         return None
 
@@ -346,6 +358,8 @@ def handle_exit(
         )
 
         clear_position()
+
+        print("TRAILING STOP HIT")
 
         return None
 
@@ -400,5 +414,10 @@ def update_trailing_stop(
             position["trail"],
             new_trail
         )
+
+    print(
+        "UPDATED TRAILING STOP:",
+        position["trail"]
+    )
 
     return position

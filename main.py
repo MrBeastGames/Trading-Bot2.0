@@ -2,11 +2,8 @@ import time
 import logging
 import os
 
-from streamlit import form
-
 import config
 import trade_logger
-
 
 from exchange_handler import (
     get_exchange,
@@ -32,6 +29,9 @@ from telegram_utils import (
     send_error_alert,
 )
 
+# =========================================================
+# GLOBAL POSITION
+# =========================================================
 position = None
 
 # =========================================================
@@ -41,25 +41,28 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-    # =====================================================
-    # LOAD SAVED POSITION
-    # =====================================================
+
+# =========================================================
+# LOAD SAVED POSITION
+# =========================================================
 position = load_position()
+
 if position:
 
-        logging.info(
-            "Restored saved position."
-        )
+    logging.info(
+        "Restored saved position."
+    )
 
 else:
 
-        logging.info(
-            "No saved position found."
-        )
+    logging.info(
+        "No saved position found."
+    )
 
 logging.info(
     "Trading bot started."
 )
+
 # =========================================================
 # LIVE TRADING LOOP
 # =========================================================
@@ -74,11 +77,15 @@ def run_bot():
 
     if not exchange:
 
-        logging.error("CONNECTION FAILED")
+        logging.error(
+            "CONNECTION FAILED"
+        )
 
         return
 
-    logging.info("CONNECTED SUCCESSFULLY")
+    logging.info(
+        "CONNECTED SUCCESSFULLY"
+    )
 
     # =====================================================
     # FETCH FUTURES BALANCE
@@ -247,6 +254,8 @@ def run_bot():
                 position
             )
 
+            print("NEW POSITION:", new_position)
+
             # =================================================
             # EXECUTE ORDER
             # =================================================
@@ -333,7 +342,7 @@ def run_bot():
                     )
 
                     # =========================================
-                    # TELEGRAM PHOTO
+                    # SEND TRADE SCREENSHOT
                     # =========================================
                     if os.path.exists(
                         "trade_chart.png"
@@ -417,3 +426,37 @@ def run_bot():
                 )
 
             time.sleep(5)
+
+# =========================================================
+# START BOT
+# =========================================================
+if __name__ == "__main__":
+
+    try:
+
+        run_bot()
+
+    except KeyboardInterrupt:
+
+        logging.info(
+            "Bot stopped manually."
+        )
+
+        if config.USE_TELEGRAM:
+
+            send_telegram_message(
+                "🔴 *BOT STOPPED MANUALLY*"
+            )
+
+    except Exception as e:
+
+        logging.error(
+            f"Fatal Error: {e}"
+        )
+
+        if config.USE_TELEGRAM:
+
+            send_telegram_message(
+                f"🔴 *BOT CRASHED*\n\n"
+                f"`{e}`"
+            )
