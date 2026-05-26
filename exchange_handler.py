@@ -14,22 +14,22 @@ def get_exchange():
     try:
 
         exchange = ccxt.bitget({
-    "apiKey": config.API_KEY,
-    "secret": config.API_SECRET,
-    "password": config.API_PASSWORD,
+            "apiKey": config.API_KEY,
+            "secret": config.API_SECRET,
+            "password": config.API_PASSWORD,
 
-    "options": {
-        "defaultType": "swap",
-        "defaultMarginMode": "cross",
-        "defaultMarginCoin": "USDT"   # 🔥 ADD THIS
-    }
-})
+            "options": {
+                "defaultType": "swap",
+                "defaultMarginMode": "cross",
+                "defaultMarginCoin": "USDT",
+                "createMarketBuyOrderRequiresPrice": False
+            }
+        })
 
         exchange.load_markets()
-        exchange.set_leverage(
-    10,
-    config.SYMBOL
-)
+
+        # ⚠️ IMPORTANT FIX: set swap-specific params
+        exchange.options["defaultMarginCoin"] = "USDT"
 
         logging.info("BITGET CONNECTED")
 
@@ -38,9 +38,7 @@ def get_exchange():
     except Exception as e:
 
         logging.error(f"CONNECTION FAILED: {e}")
-
         return None
-
 
 # =====================================================
 # FETCH OHLCV
@@ -84,18 +82,13 @@ def fetch_ohlcv(
 # =====================================================
 # PLACE MARKET ORDER
 # =====================================================
-def place_market_order(
-    exchange,
-    symbol,
-    side,
-    amount
-):
+def place_market_order(exchange, symbol, side, amount):
 
     try:
 
         params = {
-            "marginMode": "cross",
-            "tradeSide": "open"
+            "marginCoin": "USDT",   # 🔥 MUST BE HERE
+            "marginMode": "cross"
         }
 
         order = exchange.create_order(
@@ -115,7 +108,6 @@ def place_market_order(
 
         print("ORDER ERROR")
         print(e)
-
         return None
 
 # =====================================================

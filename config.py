@@ -78,11 +78,11 @@ EQUITY_PNG_PATH = "equity_curve.png"
 # =========================================================
 # BITGET API
 # =========================================================
-API_KEY = "bg_d3fd832cb78a15cb25853a905920e697"
+id="v6pxmq"
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+API_PASSWORD = os.getenv("API_PASSWORD")
 
-API_SECRET = "8a8cec56de5d3b3896bfd17fcf34d9c72fa5d871e7600957762000a9460f8fb5"
-
-API_PASSWORD = "1274712747"
 
 # =========================================================
 # TELEGRAM
