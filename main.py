@@ -2,6 +2,8 @@ import time
 import logging
 import os
 
+from streamlit import form
+
 import config
 import trade_logger
 
@@ -21,6 +23,7 @@ from strategy import (
 )
 
 from risk_manager import RiskManager
+from load_position import load_position
 
 from telegram_utils import (
     send_telegram_message,
@@ -38,17 +41,31 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+    # =====================================================
+    # LOAD SAVED POSITION
+    # =====================================================
+position = load_position()
+if position:
 
+        logging.info(
+            "Restored saved position."
+        )
+
+else:
+
+        logging.info(
+            "No saved position found."
+        )
+
+logging.info(
+    "Trading bot started."
+)
 # =========================================================
 # LIVE TRADING LOOP
 # =========================================================
 def run_bot():
 
-    # =============================================
-    # FIX POSITION VARIABLE
-    # =============================================
-    position = None
-
+    global position
 
     # =====================================================
     # CREATE EXCHANGE
@@ -57,15 +74,11 @@ def run_bot():
 
     if not exchange:
 
-        logging.error(
-            "CONNECTION FAILED"
-        )
+        logging.error("CONNECTION FAILED")
 
         return
 
-    logging.info(
-        "CONNECTED SUCCESSFULLY"
-    )
+    logging.info("CONNECTED SUCCESSFULLY")
 
     # =====================================================
     # FETCH FUTURES BALANCE
@@ -102,7 +115,6 @@ def run_bot():
         config.INITIAL_CAPITAL
     )
 
-
     # =====================================================
     # TELEGRAM START MESSAGE
     # =====================================================
@@ -133,16 +145,6 @@ def run_bot():
             )
 
             # =================================================
-            # SAVE MARKET DATA
-            # =================================================
-            if df is not None:
-
-                df.to_csv(
-                    "market_data.csv",
-                    index=False
-                )
-
-            # =================================================
             # EMPTY DATA CHECK
             # =================================================
             if df is None or df.empty:
@@ -154,6 +156,14 @@ def run_bot():
                 time.sleep(5)
 
                 continue
+
+            # =================================================
+            # SAVE MARKET DATA
+            # =================================================
+            df.to_csv(
+                "market_data.csv",
+                index=False
+            )
 
             # =================================================
             # ADD INDICATORS
@@ -185,19 +195,18 @@ def run_bot():
             # =================================================
             # UPDATE TRAILING STOP
             # =================================================
-            position = update_trailing_stop(
-                position,
-                price
-            )
+            if position is not None:
 
-            # =================================================
-            # HANDLE EXITS
-            # =================================================
-            position = handle_exit(
-                position,
-                price,
-                rm
-            )
+                position = update_trailing_stop(
+                    position,
+                    price
+                )
+
+                position = handle_exit(
+                    position,
+                    price,
+                    rm
+                )
 
             # =================================================
             # RISK MANAGER CHECK
@@ -286,7 +295,6 @@ def run_bot():
                 # =============================================
                 else:
 
-                    # LONG
                     if side == "long":
 
                         order = place_market_order(
@@ -296,7 +304,6 @@ def run_bot():
                             amount
                         )
 
-                    # SHORT
                     elif side == "short":
 
                         order = place_market_order(
@@ -311,23 +318,22 @@ def run_bot():
                 # =============================================
                 if order is not None:
 
-                    # LOG TRADE
+                    position = new_position
+
                     trade_logger.log_trade(
                         side=side,
                         price=price,
                         amount=amount
                     )
 
-                    # RECORD TRADE
                     rm.record_trade()
 
-                    # EQUITY UPDATE
                     send_equity_update(
                         rm.capital
                     )
 
                     # =========================================
-                    # SEND TRADE SCREENSHOT
+                    # TELEGRAM PHOTO
                     # =========================================
                     if os.path.exists(
                         "trade_chart.png"
@@ -380,7 +386,7 @@ def run_bot():
                 f"Capital: {rm.capital:.2f}"
             )
 
-            if position:
+            if position is not None:
 
                 logging.info(
                     f"Open Position: {position}"
@@ -411,38 +417,3 @@ def run_bot():
                 )
 
             time.sleep(5)
-
-
-# =========================================================
-# START BOT
-# =========================================================
-if __name__ == "__main__":
-
-    try:
-
-        run_bot()
-
-    except KeyboardInterrupt:
-
-        logging.info(
-            "Bot stopped manually."
-        )
-
-        if config.USE_TELEGRAM:
-
-            send_telegram_message(
-                "🔴 *BOT STOPPED MANUALLY*"
-            )
-
-    except Exception as e:
-
-        logging.error(
-            f"Fatal Error: {e}"
-        )
-
-        if config.USE_TELEGRAM:
-
-            send_telegram_message(
-                f"🔴 *BOT CRASHED*\n\n"
-                f"`{e}`"
-            )
