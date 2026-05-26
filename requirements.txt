@@ -8,3 +8,13 @@ requests
 plotly
 streamlit-autorefresh
 kaleido
+txt
+sqlalchemy
+psycopg2-binary
+bcrypt
+streamlit-authenticator
+transformers
+torch
+sentencepiece
+accelerate
+textblob

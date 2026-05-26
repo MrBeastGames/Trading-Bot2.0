@@ -98,3 +98,23 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 MAX_SPREAD_PCT = 0.15
 
 MAX_VOLATILITY_PCT = 1.0
+# =====================================================
+# MULTI PAIR CONFIG
+# =====================================================
+SYMBOLS = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "XRP/USDT",
+]
+
+# =====================================================
+# DASHBOARD AUTH
+# =====================================================
+DASHBOARD_USERNAME = "admin"
+DASHBOARD_PASSWORD = "changeme"
+
+# =====================================================
+# DATABASE
+# =====================================================
+DATABASE_ENABLED = True
