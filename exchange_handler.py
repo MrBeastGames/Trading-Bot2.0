@@ -18,6 +18,9 @@ def get_exchange():
             "secret": config.API_SECRET,
             "password": config.API_PASSWORD,
 
+            "enableRateLimit": True,
+             "timeout": 30000,
+
             "options": {
                 "defaultType": "swap",
                 "defaultMarginMode": "cross",

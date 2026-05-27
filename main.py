@@ -45,7 +45,7 @@ logging.basicConfig(
 )
 
 # =========================================================
-# BOT STATUS FILE
+# BOT STATUS
 # =========================================================
 def set_bot_status(status):
 
@@ -60,7 +60,7 @@ logging.info("Trading bot starting...")
 set_bot_status("RUNNING")
 
 # =========================================================
-# LOAD SAVED POSITIONS
+# LOAD SAVED POSITION
 # =========================================================
 saved_position = load_position()
 
@@ -79,13 +79,15 @@ else:
     )
 
 # =========================================================
-# MULTI SYMBOL TRADING LOOP
+# MULTI SYMBOL BOT
 # =========================================================
 def run_symbol_bot(symbol):
 
     global positions
 
-    logging.info(f"Starting bot for {symbol}")
+    logging.info(
+        f"Starting bot for {symbol}"
+    )
 
     # =====================================================
     # CREATE EXCHANGE
@@ -134,12 +136,23 @@ def run_symbol_bot(symbol):
             # =================================================
             # FETCH MARKET DATA
             # =================================================
-            df = fetch_ohlcv(
-                exchange,
-                symbol,
-                config.TIMEFRAME,
-                limit=300
-            )
+            try:
+
+                df = fetch_ohlcv(
+                    exchange,
+                    symbol,
+                    config.TIMEFRAME,
+                    limit=300
+                )
+
+            except Exception as e:
+
+                logging.error(
+                    f"{symbol} fetch error: {e}"
+                )
+
+                time.sleep(30)
+                continue
 
             # =================================================
             # EMPTY DATA CHECK
@@ -150,7 +163,7 @@ def run_symbol_bot(symbol):
                     f"{symbol} No market data received."
                 )
 
-                time.sleep(5)
+                time.sleep(15)
                 continue
 
             # =================================================
@@ -160,6 +173,12 @@ def run_symbol_bot(symbol):
 
             df.to_csv(
                 f"market_data_{safe_symbol}.csv",
+                index=False
+            )
+
+            # Dashboard live chart file
+            df.to_csv(
+                "market_data.csv",
                 index=False
             )
 
@@ -176,7 +195,7 @@ def run_symbol_bot(symbol):
                     f"{symbol} Not enough candle data."
                 )
 
-                time.sleep(5)
+                time.sleep(15)
                 continue
 
             # =================================================
@@ -195,7 +214,7 @@ def run_symbol_bot(symbol):
             current_position = positions.get(symbol)
 
             # =================================================
-            # UPDATE TRAILING STOP
+            # UPDATE POSITION
             # =================================================
             if current_position is not None:
 
@@ -213,7 +232,7 @@ def run_symbol_bot(symbol):
                 positions[symbol] = current_position
 
             # =================================================
-            # RISK MANAGER CHECK
+            # RISK CHECK
             # =================================================
             if not rm.can_trade():
 
@@ -221,11 +240,11 @@ def run_symbol_bot(symbol):
                     f"{symbol} Cooldown active."
                 )
 
-                time.sleep(5)
+                time.sleep(15)
                 continue
 
             # =================================================
-            # SLIPPAGE PROTECTION
+            # SLIPPAGE CHECK
             # =================================================
             if not check_slippage(
                 exchange,
@@ -233,10 +252,10 @@ def run_symbol_bot(symbol):
             ):
 
                 logging.warning(
-                    f"{symbol} Slippage protection blocked trade."
+                    f"{symbol} Slippage blocked trade."
                 )
 
-                time.sleep(5)
+                time.sleep(15)
                 continue
 
             # =================================================
@@ -258,6 +277,7 @@ def run_symbol_bot(symbol):
             ):
 
                 side = new_position["side"]
+
                 amount = new_position["amount"]
 
                 order = None
@@ -271,7 +291,7 @@ def run_symbol_bot(symbol):
                         f"{symbol} LIVE TRADING DISABLED"
                     )
 
-                    time.sleep(5)
+                    time.sleep(15)
                     continue
 
                 # =============================================
@@ -320,29 +340,59 @@ def run_symbol_bot(symbol):
 
                     positions[symbol] = new_position
 
-                trade_logger.log_trade(
-                       symbol=symbol,
-                       side=side,
-                       price=price,
-                       amount=amount,
-                       pnl=0
-                    )
+                    # =========================================
+                    # LOG TRADE
+                    # =========================================
+                    try:
 
-                rm.record_trade()
+                        trade_logger.log_trade(
+                            symbol=symbol,
+                            side=side,
+                            price=price,
+                            amount=amount,
+                            pnl=0
+                        )
 
-                send_equity_update(
-                        rm.capital
-                    )
+                    except Exception as e:
+
+                        logging.error(
+                            f"Trade logger error: {e}"
+                        )
+
+                    # =========================================
+                    # UPDATE RISK MANAGER
+                    # =========================================
+                    rm.record_trade()
+
+                    # =========================================
+                    # EQUITY UPDATE
+                    # =========================================
+                    try:
+
+                        send_equity_update(
+                            rm.capital
+                        )
+
+                    except Exception as e:
+
+                        logging.error(
+                            f"Equity update error: {e}"
+                        )
 
                     # =========================================
                     # TELEGRAM ALERT
                     # =========================================
-                if config.USE_TELEGRAM:
+                    if config.USE_TELEGRAM:
 
-                        trade_type = "🚀 LIVE TRADE"
+                        trade_type = (
+                            "🚀 LIVE TRADE"
+                        )
 
                         if config.PAPER_TRADING:
-                            trade_type = "🧪 PAPER TRADE"
+
+                            trade_type = (
+                                "🧪 PAPER TRADE"
+                            )
 
                         send_telegram_message(
                             f"{trade_type}\n\n"
@@ -355,7 +405,7 @@ def run_symbol_bot(symbol):
                     # =========================================
                     # TRADE SCREENSHOT
                     # =========================================
-                if os.path.exists(
+                    if os.path.exists(
                         "trade_chart.png"
                     ):
 
@@ -400,7 +450,7 @@ def run_symbol_bot(symbol):
             # =================================================
             # WAIT
             # =================================================
-            time.sleep(5)
+            time.sleep(15)
 
         except Exception as e:
 
@@ -415,10 +465,10 @@ def run_symbol_bot(symbol):
                     severity="HIGH"
                 )
 
-            time.sleep(5)
+            time.sleep(15)
 
 # =========================================================
-# START ALL SYMBOL BOTS
+# START ALL SYMBOL THREADS
 # =========================================================
 if __name__ == "__main__":
 
@@ -434,6 +484,10 @@ if __name__ == "__main__":
 
         for symbol in symbols:
 
+            logging.info(
+                f"Launching thread for {symbol}"
+            )
+
             t = threading.Thread(
                 target=run_symbol_bot,
                 args=(symbol,),
@@ -444,11 +498,33 @@ if __name__ == "__main__":
 
             threads.append(t)
 
+            # =============================================
+            # STAGGER PAIR STARTUP
+            # Prevents Bitget 429 errors
+            # =============================================
+            startup_delay = getattr(
+                config,
+                "PAIR_STARTUP_DELAY",
+                10
+            )
+
+            logging.info(
+                f"Waiting "
+                f"{startup_delay}s "
+                f"before next pair..."
+            )
+
+            time.sleep(startup_delay)
+
         logging.info(
             "All trading threads started."
         )
 
+        # =============================================
+        # KEEP MAIN THREAD ALIVE
+        # =============================================
         while True:
+
             time.sleep(60)
 
     except KeyboardInterrupt:

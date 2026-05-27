@@ -1,4 +1,3 @@
-
 import os
 import sys
 import time
@@ -13,97 +12,60 @@ logging.basicConfig(
 )
 
 processes = []
-shutdown_flag = False
 
+# =====================================================
+# RUN TRADING BOT
+# =====================================================
 def run_bot():
 
-    global shutdown_flag
+    logging.info("Starting trading bot...")
 
-    while not shutdown_flag:
+    bot = subprocess.Popen(
+        [sys.executable, "main.py"]
+    )
 
-        try:
+    processes.append(bot)
 
-            logging.info("Starting trading bot...")
+    bot.wait()
 
-            bot = subprocess.Popen(
-                [sys.executable, "main.py"]
-            )
-
-            processes.append(bot)
-
-            bot.wait()
-
-            if shutdown_flag:
-                break
-
-            logging.warning(
-                "Bot crashed. Restarting in 5 seconds..."
-            )
-
-            time.sleep(5)
-
-        except Exception as e:
-
-            logging.error(
-                f"Bot process error: {e}"
-            )
-
-            time.sleep(5)
-
+# =====================================================
+# RUN DASHBOARD
+# =====================================================
 def run_dashboard():
 
-    global shutdown_flag
+    port = os.environ.get(
+        "PORT",
+        "8080"
+    )
 
-    port = os.environ.get("PORT", "8080")
+    logging.info(
+        f"Starting dashboard on port {port}"
+    )
 
-    while not shutdown_flag:
+    dashboard = subprocess.Popen([
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        "dashboard.py",
+        "--server.port",
+        str(port),
+        "--server.address",
+        "0.0.0.0",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ])
 
-        try:
+    processes.append(dashboard)
 
-            logging.info(
-                f"Starting dashboard on port {port}"
-            )
+    dashboard.wait()
 
-            dashboard = subprocess.Popen([
-                sys.executable,
-                "-m",
-                "streamlit",
-                "run",
-                "dashboard.py",
-                "--server.port",
-                str(port),
-                "--server.address",
-                "0.0.0.0",
-                "--server.headless",
-                "true"
-            ])
-
-            processes.append(dashboard)
-
-            dashboard.wait()
-
-            if shutdown_flag:
-                break
-
-            logging.warning(
-                "Dashboard crashed. Restarting..."
-            )
-
-            time.sleep(5)
-
-        except Exception as e:
-
-            logging.error(
-                f"Dashboard error: {e}"
-            )
-
-            time.sleep(5)
-
+# =====================================================
+# CLEAN SHUTDOWN
+# =====================================================
 def shutdown(*args):
-
-    global shutdown_flag
-
-    shutdown_flag = True
 
     logging.info(
         "Shutting down services..."
@@ -113,6 +75,7 @@ def shutdown(*args):
 
         try:
             proc.terminate()
+
         except Exception:
             pass
 
@@ -121,6 +84,9 @@ def shutdown(*args):
 signal.signal(signal.SIGTERM, shutdown)
 signal.signal(signal.SIGINT, shutdown)
 
+# =====================================================
+# START BOT THREAD
+# =====================================================
 bot_thread = threading.Thread(
     target=run_bot,
     daemon=True
@@ -128,4 +94,19 @@ bot_thread = threading.Thread(
 
 bot_thread.start()
 
-run_dashboard()
+# =====================================================
+# KEEP DASHBOARD ALIVE
+# =====================================================
+while True:
+
+    try:
+
+        run_dashboard()
+
+    except Exception as e:
+
+        logging.error(
+            f"Dashboard crashed: {e}"
+        )
+
+        time.sleep(5)
