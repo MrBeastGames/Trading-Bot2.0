@@ -1,45 +1,26 @@
-import logging
-
-import config
 import time
+import logging
+import config
 
 
 class RiskManager:
 
+    # =====================================================
+    # INIT
+    # =====================================================
     def __init__(self, capital):
 
         self.capital = capital
 
-    def get_position_size(self, price):
+        self.last_trade_time = 0
 
-        return self.capital * 0.01 / price
+        self.trade_count = 0
 
-    def can_trade(self):
+        self.daily_loss = 0
 
-        return True
-
-    def record_trade(self):
-
-        pass
-
-        # =====================================================
-        # REALIZE PNL
-        # =====================================================
-        def realize(self, pnl):
-
-         self.capital += pnl
-
-         logging.info(
-        f"PNL Realized: {pnl:.2f}"
-        )
-
-        logging.info(
-            f"Updated Capital: {self.capital:.2f}"
-        )
-
-    # =================================================
-    # CHECK COOLDOWN
-    # =================================================
+    # =====================================================
+    # CHECK COOLDOWN + RISK LIMITS
+    # =====================================================
     def can_trade(self):
 
         current_time = time.time()
@@ -50,19 +31,40 @@ class RiskManager:
         ) > config.TRADE_COOLDOWN_SECONDS
 
         if not cooldown_passed:
+
+            logging.warning(
+                "Trade cooldown active."
+            )
+
             return False
 
-        if self.daily_loss >= config.MAX_DAILY_LOSS_USD:
+        if (
+            self.daily_loss
+            >= config.MAX_DAILY_LOSS_USD
+        ):
+
+            logging.warning(
+                "Max daily loss reached."
+            )
+
             return False
 
-        if self.trade_count >= config.MAX_TRADES_PER_DAY:
+        if (
+            self.trade_count
+            >= config.MAX_TRADES_PER_DAY
+        ):
+
+            logging.warning(
+                "Max trades reached."
+            )
+
             return False
 
         return True
 
-    # =================================================
+    # =====================================================
     # POSITION SIZE
-    # =================================================
+    # =====================================================
     def get_position_size(
         self,
         entry_price
@@ -77,37 +79,70 @@ class RiskManager:
             * config.LEVERAGE
         )
 
-        btc_size = (
+        size = (
             position_value
             / entry_price
         )
 
-        btc_size = round(
-            btc_size,
-            4
-        )
+        size = round(size, 4)
 
         # =================================================
-        # MINIMUM BTC SIZE
+        # MINIMUM SIZE
         # =================================================
-        if btc_size < 0.0001:
-            btc_size = 0.0001
+        if size < 0.0001:
 
-        return btc_size
+            size = 0.0001
 
-    # =================================================
+        return size
+
+    # =====================================================
     # RECORD TRADE
-    # =================================================
+    # =====================================================
     def record_trade(self):
 
         self.trade_count += 1
 
         self.last_trade_time = time.time()
 
-    # =================================================
+        logging.info(
+            f"Trade Recorded | Count: {self.trade_count}"
+        )
+
+    # =====================================================
     # RECORD LOSS
-    # =================================================
-    def record_loss(self, pnl):
+    # =====================================================
+    def record_loss(
+        self,
+        pnl
+    ):
 
         if pnl < 0:
+
             self.daily_loss += abs(pnl)
+
+            logging.warning(
+                f"Daily Loss Updated: "
+                f"{self.daily_loss:.2f}"
+            )
+
+    # =====================================================
+    # REALIZE PNL
+    # =====================================================
+    def realize(
+        self,
+        pnl
+    ):
+
+        self.capital += pnl
+
+        logging.info(
+            f"PNL Realized: {pnl:.2f}"
+        )
+
+        logging.info(
+            f"Updated Capital: "
+            f"{self.capital:.2f}"
+        )
+
+        # RECORD LOSS
+        self.record_loss(pnl)
