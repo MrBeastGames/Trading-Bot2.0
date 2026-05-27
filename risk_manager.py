@@ -1,3 +1,5 @@
+import logging
+
 import config
 import time
 
@@ -8,11 +10,32 @@ class RiskManager:
 
         self.capital = capital
 
-        self.daily_loss = 0
+    def get_position_size(self, price):
 
-        self.trade_count = 0
+        return self.capital * 0.01 / price
 
-        self.last_trade_time = 0
+    def can_trade(self):
+
+        return True
+
+    def record_trade(self):
+
+        pass
+
+        # =====================================================
+        # REALIZE PNL
+        # =====================================================
+        def realize(self, pnl):
+
+         self.capital += pnl
+
+         logging.info(
+        f"PNL Realized: {pnl:.2f}"
+        )
+
+        logging.info(
+            f"Updated Capital: {self.capital:.2f}"
+        )
 
     # =================================================
     # CHECK COOLDOWN

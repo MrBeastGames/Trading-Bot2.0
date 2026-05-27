@@ -20,9 +20,8 @@ st.set_page_config(
 # AUTO REFRESH
 # =====================================================
 st_autorefresh(
-    interval=10000,
-    key="dashboard_refresh"
-)
+    interval=60000)
+key="dashboard_refresh"
 
 # =====================================================
 # SAFE CONFIG IMPORT
