@@ -1,32 +1,12 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import os
 import sqlite3
+import numpy as np
+import pandas as pd
+import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 
 from streamlit_autorefresh import st_autorefresh
-
-# =====================================================
-# SQLITE SAFETY
-# =====================================================
-sqlite3.enable_callback_tracebacks(True)
-
-# =====================================================
-# SAFE IMPORTS
-# =====================================================
-try:
-    import config
-except Exception:
-    config = None
-
-try:
-    from telegram_utils import send_telegram_message
-except Exception:
-
-    def send_telegram_message(message):
-        return None
 
 # =====================================================
 # PAGE CONFIG
@@ -37,7 +17,33 @@ st.set_page_config(
 )
 
 # =====================================================
-# MOBILE OPTIMIZATION
+# AUTO REFRESH
+# =====================================================
+st_autorefresh(
+    interval=10000,
+    key="dashboard_refresh"
+)
+
+# =====================================================
+# SAFE CONFIG IMPORT
+# =====================================================
+try:
+    import config
+except Exception:
+    config = None
+
+# =====================================================
+# SAFE TELEGRAM IMPORT
+# =====================================================
+try:
+    from telegram_utils import send_telegram_message
+except Exception:
+
+    def send_telegram_message(message):
+        pass
+
+# =====================================================
+# MOBILE STYLE
 # =====================================================
 st.markdown(
     """
@@ -48,59 +54,39 @@ st.markdown(
         padding-bottom: 1rem;
     }
 
-    @media (max-width: 768px) {
-
-        .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-
-    }
-
     </style>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
 # =====================================================
-# AUTO REFRESH
+# LOGIN SYSTEM
 # =====================================================
-st_autorefresh(
-    interval=10000,
-    key="dashboard_refresh",
-)
-
-# =====================================================
-# AUTHENTICATION
-# =====================================================
-DASHBOARD_USERNAME = "admin"
-DASHBOARD_PASSWORD = "admin123"
+USERNAME = "admin"
+PASSWORD = "admin123"
 
 if config is not None:
 
-    DASHBOARD_USERNAME = getattr(
+    USERNAME = getattr(
         config,
         "DASHBOARD_USERNAME",
         "admin"
     )
 
-    DASHBOARD_PASSWORD = getattr(
+    PASSWORD = getattr(
         config,
         "DASHBOARD_PASSWORD",
         "admin123"
     )
 
 if "authenticated" not in st.session_state:
-
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
 
     st.title("🔐 Admin Login")
 
-    username = st.text_input(
-        "Username"
-    )
+    username = st.text_input("Username")
 
     password = st.text_input(
         "Password",
@@ -110,42 +96,33 @@ if not st.session_state["authenticated"]:
     if st.button("Login"):
 
         if (
-            username == DASHBOARD_USERNAME
-            and password == DASHBOARD_PASSWORD
+            username == USERNAME
+            and password == PASSWORD
         ):
 
-            st.session_state[
-                "authenticated"
-            ] = True
-
+            st.session_state["authenticated"] = True
             st.rerun()
 
         else:
-
-            st.error(
-                "Invalid credentials"
-            )
+            st.error("Invalid credentials")
 
     st.stop()
 
 # =====================================================
 # DATABASE CONNECTION
 # =====================================================
+conn = None
+
 try:
 
     conn = sqlite3.connect(
         "trading_bot.db",
-        check_same_thread=False,
-        timeout=30
+        check_same_thread=False
     )
 
 except Exception as e:
 
-    st.error(
-        f"Database connection failed: {e}"
-    )
-
-    st.stop()
+    st.error(f"Database Error: {e}")
 
 # =====================================================
 # TITLE
@@ -160,48 +137,42 @@ st.sidebar.title("⚙️ Control Panel")
 strategy = st.sidebar.selectbox(
     "Strategy",
     [
-        "EMA Trend Strategy",
-        "Scalping Strategy",
-        "Breakout Strategy",
-        "Swing Strategy",
-    ],
+        "EMA Trend",
+        "Scalping",
+        "Breakout",
+        "Swing",
+    ]
 )
 
 st.sidebar.success(
-    f"Active Strategy: {strategy}"
+    f"Active: {strategy}"
 )
 
 # =====================================================
 # TELEGRAM TEST
 # =====================================================
-if st.sidebar.button(
-    "Send Telegram Test"
-):
+if st.sidebar.button("Send Telegram Test"):
 
     try:
 
         send_telegram_message(
-            "📡 Dashboard test message"
+            "📡 Dashboard test successful"
         )
 
         st.sidebar.success(
-            "Telegram message sent"
+            "Telegram sent"
         )
 
     except Exception as e:
 
-        st.sidebar.error(
-            f"Telegram Error: {e}"
-        )
+        st.sidebar.error(str(e))
 
 # =====================================================
 # BOT STATUS
 # =====================================================
 st.subheader("🤖 Bot Status")
 
-if os.path.exists(
-    "bot_status.txt"
-):
+if os.path.exists("bot_status.txt"):
 
     try:
 
@@ -210,147 +181,148 @@ if os.path.exists(
             "r"
         ) as f:
 
-            status = (
-                f.read().strip()
-            )
+            status = f.read().strip()
 
         if status == "RUNNING":
 
-            st.success(
-                "Bot is RUNNING"
-            )
+            st.success("Bot Running")
 
         else:
 
-            st.error(
-                "Bot is STOPPED"
-            )
+            st.error("Bot Stopped")
 
     except Exception:
 
-        st.error(
+        st.warning(
             "Could not read bot status."
         )
 
 else:
 
-    st.error(
-        "Bot status file missing."
+    st.warning(
+        "bot_status.txt missing"
     )
+
+# =====================================================
+# LOAD TRADES
+# =====================================================
+trades_df = pd.DataFrame()
+
+if conn is not None:
+
+    try:
+
+        trades_df = pd.read_sql_query(
+            "SELECT * FROM trades",
+            conn
+        )
+
+    except Exception:
+        pass
 
 # =====================================================
 # LIVE PNL
 # =====================================================
-st.subheader("💰 Live PnL")
+st.subheader("💰 Live Performance")
 
-trades_df = pd.DataFrame()
+if not trades_df.empty:
 
-try:
+    pnl_total = 0
 
-    trades_df = pd.read_sql_query(
-        "SELECT * FROM trades LIMIT 100",
-        conn
-    )
+    if "pnl" in trades_df.columns:
 
-    if not trades_df.empty:
-
-        if "pnl" in trades_df.columns:
-
-            total_pnl = (
-                trades_df["pnl"]
-                .fillna(0)
-                .sum()
-            )
-
-            total_trades = len(
-                trades_df
-            )
-
-            winrate = (
-                (
-                    trades_df["pnl"]
-                    > 0
-                ).mean()
-            ) * 100
-
-            col1, col2, col3 = st.columns(3)
-
-            col1.metric(
-                "Total PnL",
-                f"${total_pnl:.2f}"
-            )
-
-            col2.metric(
-                "Trades",
-                total_trades
-            )
-
-            col3.metric(
-                "Winrate",
-                f"{winrate:.2f}%"
-            )
-
-    else:
-
-        st.info(
-            "No trades yet."
+        pnl_total = (
+            trades_df["pnl"]
+            .fillna(0)
+            .sum()
         )
 
-except Exception as e:
+    total_trades = len(trades_df)
 
-    st.warning(
-        f"Trades Database Error: {e}"
+    wins = 0
+
+    if "pnl" in trades_df.columns:
+
+        wins = (
+            trades_df["pnl"] > 0
+        ).sum()
+
+    winrate = 0
+
+    if total_trades > 0:
+
+        winrate = (
+            wins / total_trades
+        ) * 100
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Total PnL",
+        f"${pnl_total:.2f}"
     )
+
+    col2.metric(
+        "Trades",
+        total_trades
+    )
+
+    col3.metric(
+        "Winrate",
+        f"{winrate:.2f}%"
+    )
+
+else:
+
+    st.info("No trades yet.")
 
 # =====================================================
 # OPEN POSITIONS
 # =====================================================
 st.subheader("📊 Open Positions")
 
-try:
+if conn is not None:
 
-    positions_df = pd.read_sql_query(
-        "SELECT * FROM positions LIMIT 100",
-        conn
-    )
+    try:
 
-    if not positions_df.empty:
-
-        st.dataframe(
-            positions_df,
-            use_container_width=True
+        positions_df = pd.read_sql_query(
+            "SELECT * FROM positions",
+            conn
         )
 
-    else:
+        if not positions_df.empty:
+
+            st.dataframe(
+                positions_df,
+                use_container_width=True
+            )
+
+        else:
+
+            st.info(
+                "No open positions"
+            )
+
+    except Exception:
 
         st.info(
-            "No open positions."
+            "No positions table yet."
         )
 
-except Exception as e:
-
-    st.warning(
-        f"Positions Error: {e}"
-    )
-
 # =====================================================
-# LIVE MARKET CHART
+# MARKET CHART
 # =====================================================
 st.subheader("📈 Live Market Chart")
 
-market_file = "market_data.csv"
-
-if os.path.exists(
-    market_file
-):
+if os.path.exists("market_data.csv"):
 
     try:
 
         market_df = pd.read_csv(
-            market_file
-        ).tail(300)
+            "market_data.csv"
+        ).tail(200)
 
-        required_cols = [
+        required = [
             "open",
             "high",
             "low",
@@ -359,23 +331,23 @@ if os.path.exists(
 
         if all(
             col in market_df.columns
-            for col in required_cols
+            for col in required
         ):
 
-            fig = go.Figure(
-                data=[
-                    go.Candlestick(
-                        x=market_df.index,
-                        open=market_df["open"],
-                        high=market_df["high"],
-                        low=market_df["low"],
-                        close=market_df["close"],
-                    )
-                ]
+            fig = go.Figure()
+
+            fig.add_trace(
+                go.Candlestick(
+                    x=market_df.index,
+                    open=market_df["open"],
+                    high=market_df["high"],
+                    low=market_df["low"],
+                    close=market_df["close"],
+                )
             )
 
             fig.update_layout(
-                height=600
+                height=500
             )
 
             st.plotly_chart(
@@ -386,7 +358,7 @@ if os.path.exists(
         else:
 
             st.warning(
-                "OHLC columns missing."
+                "OHLC columns missing"
             )
 
     except Exception as e:
@@ -398,7 +370,7 @@ if os.path.exists(
 else:
 
     st.warning(
-        "No market data file found."
+        "market_data.csv not found"
     )
 
 # =====================================================
@@ -406,40 +378,31 @@ else:
 # =====================================================
 st.subheader("💹 Equity Curve")
 
-if os.path.exists(
-    "equity_curve.csv"
-):
+if os.path.exists("equity_curve.csv"):
 
     try:
 
         equity_df = pd.read_csv(
             "equity_curve.csv"
-        ).tail(300)
+        )
 
         if (
             not equity_df.empty
-            and "equity"
-            in equity_df.columns
+            and "equity" in equity_df.columns
         ):
 
             st.line_chart(
                 equity_df["equity"]
             )
 
-            latest_equity = (
+            latest = (
                 equity_df["equity"]
                 .iloc[-1]
             )
 
             st.metric(
                 "Current Equity",
-                f"{latest_equity:.2f}"
-            )
-
-        else:
-
-            st.warning(
-                "No equity data found."
+                f"${latest:.2f}"
             )
 
     except Exception as e:
@@ -447,6 +410,66 @@ if os.path.exists(
         st.warning(
             f"Equity Error: {e}"
         )
+
+# =====================================================
+# SHARPE RATIO
+# =====================================================
+st.subheader("📐 Sharpe Ratio")
+
+try:
+
+    if (
+        not trades_df.empty
+        and "pnl" in trades_df.columns
+    ):
+
+        returns = trades_df["pnl"]
+
+        if returns.std() != 0:
+
+            sharpe = (
+                returns.mean()
+                / returns.std()
+            )
+
+            st.metric(
+                "Sharpe Ratio",
+                f"{sharpe:.2f}"
+            )
+
+except Exception:
+    pass
+
+# =====================================================
+# RISK EXPOSURE
+# =====================================================
+st.subheader("⚠️ Risk Exposure")
+
+risk = np.random.uniform(1, 10)
+
+st.progress(risk / 10)
+
+st.write(
+    f"Current Risk Exposure: {risk:.2f}%"
+)
+
+# =====================================================
+# HEATMAP
+# =====================================================
+st.subheader("🔥 Market Heatmap")
+
+heatmap = np.random.rand(10, 10)
+
+fig_heatmap = px.imshow(
+    heatmap,
+    text_auto=True,
+    aspect="auto"
+)
+
+st.plotly_chart(
+    fig_heatmap,
+    use_container_width=True
+)
 
 # =====================================================
 # TRADE HISTORY
@@ -461,97 +484,11 @@ if not trades_df.empty:
     )
 
 # =====================================================
-# RISK EXPOSURE
-# =====================================================
-st.subheader("⚠️ Risk Exposure")
-
-risk_value = np.random.uniform(
-    1,
-    10
-)
-
-st.progress(
-    risk_value / 10
-)
-
-st.write(
-    f"Current Risk Exposure: "
-    f"{risk_value:.2f}%"
-)
-
-# =====================================================
-# SHARPE RATIO
-# =====================================================
-st.subheader("📐 Sharpe Ratio")
-
-try:
-
-    if (
-        not trades_df.empty
-        and "pnl"
-        in trades_df.columns
-    ):
-
-        returns = (
-            trades_df["pnl"]
-            .fillna(0)
-        )
-
-        if returns.std() != 0:
-
-            sharpe = (
-                returns.mean()
-                / returns.std()
-            )
-
-            st.metric(
-                "Sharpe Ratio",
-                f"{sharpe:.2f}"
-            )
-
-        else:
-
-            st.metric(
-                "Sharpe Ratio",
-                "0.00"
-            )
-
-except Exception:
-    pass
-
-# =====================================================
-# HEATMAP
-# =====================================================
-st.subheader("🔥 Market Heatmap")
-
-heatmap_data = np.random.rand(
-    10,
-    10
-)
-
-fig_heatmap = px.imshow(
-    heatmap_data,
-    text_auto=True,
-    aspect="auto",
-)
-
-st.plotly_chart(
-    fig_heatmap,
-    use_container_width=True
-)
-
-# =====================================================
 # CONFIG SNAPSHOT
 # =====================================================
 st.subheader("⚙️ Config Snapshot")
 
-if config is None:
-
-    st.warning(
-        "config.py could not be loaded"
-    )
-
-else:
+if config is not None:
 
     snapshot = {}
 
@@ -562,10 +499,7 @@ else:
         "PAPER_TRADING",
     ]:
 
-        if hasattr(
-            config,
-            attr
-        ):
+        if hasattr(config, attr):
 
             snapshot[attr] = getattr(
                 config,
@@ -574,16 +508,12 @@ else:
 
     snapshot["API_KEY"] = "****"
     snapshot["API_SECRET"] = "****"
-    snapshot["API_PASSWORD"] = "****"
 
     st.json(snapshot)
 
 # =====================================================
-# CLEANUP
+# CLOSE DB
 # =====================================================
-try:
+if conn is not None:
 
     conn.close()
-
-except Exception:
-    pass
