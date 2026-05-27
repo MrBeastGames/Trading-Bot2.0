@@ -7,3 +7,4 @@ ccxt
 requests
 python-dotenv
 python-telegram-bot
+textblob

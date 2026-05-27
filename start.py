@@ -1,3 +1,4 @@
+
 import os
 import sys
 import time
@@ -6,24 +7,14 @@ import logging
 import subprocess
 import threading
 
-# =====================================================
-# LOGGING
-# =====================================================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# =====================================================
-# GLOBAL PROCESS STORAGE
-# =====================================================
 processes = []
-
 shutdown_flag = False
 
-# =====================================================
-# START TRADING BOT
-# =====================================================
 def run_bot():
 
     global shutdown_flag
@@ -32,9 +23,7 @@ def run_bot():
 
         try:
 
-            logging.info(
-                "Starting trading bot..."
-            )
+            logging.info("Starting trading bot...")
 
             bot = subprocess.Popen(
                 [sys.executable, "main.py"]
@@ -44,8 +33,11 @@ def run_bot():
 
             bot.wait()
 
+            if shutdown_flag:
+                break
+
             logging.warning(
-                "Trading bot stopped. Restarting in 5 seconds..."
+                "Bot crashed. Restarting in 5 seconds..."
             )
 
             time.sleep(5)
@@ -53,22 +45,16 @@ def run_bot():
         except Exception as e:
 
             logging.error(
-                f"Bot launcher error: {e}"
+                f"Bot process error: {e}"
             )
 
             time.sleep(5)
 
-# =====================================================
-# START DASHBOARD
-# =====================================================
 def run_dashboard():
 
     global shutdown_flag
 
-    port = os.environ.get(
-        "PORT",
-        "8501"
-    )
+    port = os.environ.get("PORT", "8080")
 
     while not shutdown_flag:
 
@@ -89,17 +75,18 @@ def run_dashboard():
                 "--server.address",
                 "0.0.0.0",
                 "--server.headless",
-                "true",
-                "--browser.gatherUsageStats",
-                "false"
+                "true"
             ])
 
             processes.append(dashboard)
 
             dashboard.wait()
 
+            if shutdown_flag:
+                break
+
             logging.warning(
-                "Dashboard crashed. Restarting in 5 seconds..."
+                "Dashboard crashed. Restarting..."
             )
 
             time.sleep(5)
@@ -107,14 +94,11 @@ def run_dashboard():
         except Exception as e:
 
             logging.error(
-                f"Dashboard launcher error: {e}"
+                f"Dashboard error: {e}"
             )
 
             time.sleep(5)
 
-# =====================================================
-# CLEAN SHUTDOWN
-# =====================================================
 def shutdown(*args):
 
     global shutdown_flag
@@ -122,69 +106,26 @@ def shutdown(*args):
     shutdown_flag = True
 
     logging.info(
-        "Shutting down all services..."
+        "Shutting down services..."
     )
 
     for proc in processes:
 
         try:
-
             proc.terminate()
-
-        except Exception:
-            pass
-
-    time.sleep(2)
-
-    for proc in processes:
-
-        try:
-
-            proc.kill()
-
         except Exception:
             pass
 
     sys.exit(0)
 
-# =====================================================
-# SIGNAL HANDLERS
-# =====================================================
-signal.signal(
-    signal.SIGTERM,
-    shutdown
-)
+signal.signal(signal.SIGTERM, shutdown)
+signal.signal(signal.SIGINT, shutdown)
 
-signal.signal(
-    signal.SIGINT,
-    shutdown
-)
-
-# =====================================================
-# START THREADS
-# =====================================================
 bot_thread = threading.Thread(
     target=run_bot,
     daemon=True
 )
 
-dashboard_thread = threading.Thread(
-    target=run_dashboard,
-    daemon=True
-)
-
 bot_thread.start()
-dashboard_thread.start()
 
-# =====================================================
-# KEEP MAIN THREAD ALIVE
-# =====================================================
-try:
-
-    while True:
-
-        time.sleep(60)
-
-except KeyboardInterrupt:
-
-    shutdown()
+run_dashboard()
