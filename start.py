@@ -2,19 +2,16 @@ import os
 import sys
 import time
 import signal
-import logging
 import subprocess
 import threading
+import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
 processes = []
 
 # =====================================================
-# RUN TRADING BOT
+# RUN BOT
 # =====================================================
 def run_bot():
 
@@ -33,14 +30,9 @@ def run_bot():
 # =====================================================
 def run_dashboard():
 
-    port = os.environ.get(
-        "PORT",
-        "8080"
-    )
+    port = os.environ.get("PORT", "8080")
 
-    logging.info(
-        f"Starting dashboard on port {port}"
-    )
+    logging.info(f"Starting dashboard on port {port}")
 
     dashboard = subprocess.Popen([
         sys.executable,
@@ -55,7 +47,7 @@ def run_dashboard():
         "--server.headless",
         "true",
         "--browser.gatherUsageStats",
-        "false",
+        "false"
     ])
 
     processes.append(dashboard)
@@ -63,19 +55,16 @@ def run_dashboard():
     dashboard.wait()
 
 # =====================================================
-# CLEAN SHUTDOWN
+# SHUTDOWN
 # =====================================================
 def shutdown(*args):
 
-    logging.info(
-        "Shutting down services..."
-    )
+    logging.info("Shutting down services...")
 
     for proc in processes:
 
         try:
             proc.terminate()
-
         except Exception:
             pass
 
@@ -95,7 +84,7 @@ bot_thread = threading.Thread(
 bot_thread.start()
 
 # =====================================================
-# KEEP DASHBOARD ALIVE
+# START DASHBOARD
 # =====================================================
 while True:
 
