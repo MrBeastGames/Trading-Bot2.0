@@ -1,10 +1,21 @@
 import subprocess
 import sys
 import os
+import time
 
+# =====================================================
+# START BOT
+# =====================================================
 bot_process = subprocess.Popen(
-    [sys.executable, "bot/main.py"]
+    [sys.executable, "main.py"]
 )
+
+print("Trading bot started.")
+
+# =====================================================
+# START DASHBOARD
+# =====================================================
+port = os.environ.get("PORT", "8080")
 
 dashboard_process = subprocess.Popen(
     [
@@ -12,13 +23,14 @@ dashboard_process = subprocess.Popen(
         "-m",
         "streamlit",
         "run",
-        "dashboard/dashboard.py",
-        "--server.port",
-        os.environ.get("PORT", "8080"),
-        "--server.address",
-        "0.0.0.0",
+        "dashboard.py",
     ]
 )
 
-bot_process.wait()
-dashboard_process.wait()
+print(f"Dashboard started on port {port}")
+
+# =====================================================
+# KEEP CONTAINER ALIVE
+# =====================================================
+while True:
+    time.sleep(60)
