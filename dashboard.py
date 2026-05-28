@@ -215,11 +215,11 @@ st.subheader("📊 Open Positions")
 try:
 
     positions_df = pd.read_sql_query(
-        "SELECT * FROM positions ORDER BY id DESC LIMIT 50",
+        "SELECT * FROM positions ORDER BY id DESC LIMIT 20",
         conn
     )
 
-    if not positions_df.empty:
+    if len(positions_df) > 0:
 
         st.dataframe(
             positions_df,
@@ -228,11 +228,15 @@ try:
 
     else:
 
-        st.info("No open positions.")
+        st.info(
+            "No open positions."
+        )
 
 except Exception as e:
 
-    st.error(f"Positions Error: {e}")
+    st.error(
+        f"Positions Error: {e}"
+    )
 
 # =====================================================
 # LIVE CHART

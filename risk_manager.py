@@ -12,6 +12,8 @@ class RiskManager:
 
         self.capital = capital
 
+        self.starting_capital = capital
+
         self.last_trade_time = 0
 
         self.trade_count = 0
@@ -19,12 +21,15 @@ class RiskManager:
         self.daily_loss = 0
 
     # =====================================================
-    # CHECK COOLDOWN + RISK LIMITS
+    # CHECK IF BOT CAN TRADE
     # =====================================================
     def can_trade(self):
 
         current_time = time.time()
 
+        # =================================================
+        # COOLDOWN
+        # =================================================
         cooldown_passed = (
             current_time
             - self.last_trade_time
@@ -38,6 +43,9 @@ class RiskManager:
 
             return False
 
+        # =================================================
+        # DAILY LOSS LIMIT
+        # =================================================
         if (
             self.daily_loss
             >= config.MAX_DAILY_LOSS_USD
@@ -49,13 +57,27 @@ class RiskManager:
 
             return False
 
+        # =================================================
+        # MAX TRADES
+        # =================================================
         if (
             self.trade_count
             >= config.MAX_TRADES_PER_DAY
         ):
 
             logging.warning(
-                "Max trades reached."
+                "Max trades per day reached."
+            )
+
+            return False
+
+        # =================================================
+        # LOW CAPITAL PROTECTION
+        # =================================================
+        if self.capital <= 5:
+
+            logging.error(
+                "Capital too low."
             )
 
             return False
@@ -63,37 +85,37 @@ class RiskManager:
         return True
 
     # =====================================================
-    # POSITION SIZE
+    # FOREX POSITION SIZE
     # =====================================================
     def get_position_size(
         self,
         entry_price
     ):
 
-        risk_amount = (
-            config.RISK_PER_TRADE_USD
-        )
+        try:
 
-        position_value = (
-            risk_amount
-            * config.LEVERAGE
-        )
+            # =============================================
+            # SAFE FIXED LOTS FOR EXNESS DEMO
+            # =============================================
+            # VERY IMPORTANT:
+            # Start small until bot is stable
+            # =============================================
 
-        size = (
-            position_value
-            / entry_price
-        )
+            fixed_lot = 0.1
 
-        size = round(size, 4)
+            logging.info(
+                f"Using fixed lot size: {fixed_lot}"
+            )
 
-        # =================================================
-        # MINIMUM SIZE
-        # =================================================
-        if size < 0.0001:
+            return fixed_lot
 
-            size = 0.0001
+        except Exception as e:
 
-        return size
+            logging.error(
+                f"Position size error: {e}"
+            )
+
+            return 0.1
 
     # =====================================================
     # RECORD TRADE
@@ -105,7 +127,8 @@ class RiskManager:
         self.last_trade_time = time.time()
 
         logging.info(
-            f"Trade Recorded | Count: {self.trade_count}"
+            f"Trade Recorded | "
+            f"Count: {self.trade_count}"
         )
 
     # =====================================================
@@ -144,5 +167,20 @@ class RiskManager:
             f"{self.capital:.2f}"
         )
 
-        # RECORD LOSS
+        # =============================================
+        # RECORD LOSSES
+        # =============================================
         self.record_loss(pnl)
+
+    # =====================================================
+    # RESET DAILY STATS
+    # =====================================================
+    def reset_daily_stats(self):
+
+        self.trade_count = 0
+
+        self.daily_loss = 0
+
+        logging.info(
+            "Daily stats reset."
+        )

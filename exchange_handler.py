@@ -1,49 +1,33 @@
-import ccxt
-import config
+import MetaTrader5 as mt5
 import pandas as pd
 import logging
-
-logging.basicConfig(level=logging.INFO)
+import config
 
 # =====================================================
-# CONNECT EXCHANGE
+# CONNECT MT5
 # =====================================================
 
 def get_exchange():
 
-    try:
+    if not mt5.initialize(
 
-        exchange = ccxt.bitget({
-            "apiKey": config.API_KEY,
-            "secret": config.API_SECRET,
-            "password": config.API_PASSWORD,
+        login=config.MT5_LOGIN,
+        password=config.MT5_PASSWORD,
+        server=config.MT5_SERVER
 
-            "enableRateLimit": True,
-             "timeout": 30000,
+    ):
 
-            "options": {
-                "defaultType": "swap",
-                "defaultMarginMode": "cross",
-                "defaultMarginCoin": "USDT",
-                "createMarketBuyOrderRequiresPrice": False
-            }
-        })
-
-        exchange.load_markets()
-
-        # Set default margin coin
-        exchange.options["defaultMarginCoin"] = "USDT"
-
-        logging.info("BITGET CONNECTED")
-
-        return exchange
-
-    except Exception as e:
-
-        logging.error(f"CONNECTION FAILED: {e}")
+        logging.error(
+            "MT5 initialize failed"
+        )
 
         return None
 
+    logging.info(
+        "MT5 CONNECTED"
+    )
+
+    return mt5
 
 # =====================================================
 # FETCH OHLCV
@@ -53,42 +37,50 @@ def fetch_ohlcv(
     exchange,
     symbol,
     timeframe,
-    limit=100
+    limit=300
 ):
 
-    try:
+    timeframe_map = {
 
-        candles = exchange.fetch_ohlcv(
-            symbol,
-            timeframe,
-            limit=limit
-        )
+        "M1": mt5.TIMEFRAME_M1,
+        "M5": mt5.TIMEFRAME_M5,
+        "M15": mt5.TIMEFRAME_M15,
+        "H1": mt5.TIMEFRAME_H1,
 
-        df = pd.DataFrame(
-            candles,
-            columns=[
-                "timestamp",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume"
-            ]
-        )
+    }
 
-        return df
+    tf = timeframe_map.get(
+        timeframe,
+        mt5.TIMEFRAME_M5
+    )
 
-    except Exception as e:
+    rates = exchange.copy_rates_from_pos(
+        symbol,
+        tf,
+        0,
+        limit
+    )
 
-        logging.error(f"OHLCV ERROR: {e}")
+    if rates is None:
 
-        return None
+        return pd.DataFrame()
 
+    df = pd.DataFrame(rates)
+
+    df["time"] = pd.to_datetime(
+        df["time"],
+        unit="s"
+    )
+
+    return df
 
 # =====================================================
 # PLACE MARKET ORDER
 # =====================================================
 
+# =====================================================
+# PLACE MARKET ORDER
+# =====================================================
 def place_market_order(
     exchange,
     symbol,
@@ -96,38 +88,122 @@ def place_market_order(
     amount
 ):
 
-    try:
+    import MetaTrader5 as mt5
+    import logging
 
-        params = {
-            "marginCoin": "USDT",
-            "marginMode": "cross"
-        }
+    # =============================================
+    # SYMBOL INFO
+    # =============================================
+    symbol_info = mt5.symbol_info(symbol)
 
-        order = exchange.create_order(
-            symbol=symbol,
-            type="market",
-            side=side,
-            amount=amount,
-            params=params
+    if symbol_info is None:
+
+        logging.error(
+            f"{symbol} not found"
         )
-
-        print("ORDER SUCCESS")
-        print(order)
-
-        return order
-
-    except Exception as e:
-
-        print("ORDER ERROR")
-        print(e)
 
         return None
 
+    # =============================================
+    # ENABLE SYMBOL
+    # =============================================
+    if not symbol_info.visible:
 
-# =====================================================
-# CHECK SLIPPAGE CONDITIONS
-# =====================================================
+        mt5.symbol_select(symbol, True)
 
+    # =============================================
+    # TICK DATA
+    # =============================================
+    tick = mt5.symbol_info_tick(symbol)
+
+    if tick is None:
+
+        logging.error(
+            f"No tick data for {symbol}"
+        )
+
+        return None
+
+    # =============================================
+    # ORDER TYPE
+    # =============================================
+    if side.lower() == "buy":
+
+        order_type = mt5.ORDER_TYPE_BUY
+        price = tick.ask
+
+    else:
+
+        order_type = mt5.ORDER_TYPE_SELL
+        price = tick.bid
+
+    # =============================================
+    # SAFE LOT SIZE
+    # =============================================
+    amount = round(float(amount), 2)
+
+    if amount < 0.01:
+        amount = 0.01
+
+    # =============================================
+    # TRY ALL FILLING MODES
+    # =============================================
+    filling_modes = [
+        mt5.ORDER_FILLING_FOK,
+        mt5.ORDER_FILLING_IOC,
+        mt5.ORDER_FILLING_RETURN,
+    ]
+
+    for filling in filling_modes:
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": amount,
+            "type": order_type,
+            "price": price,
+            "deviation": 20,
+            "magic": 123456,
+            "comment": "AI Forex Bot",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": filling,
+        }
+
+        result = mt5.order_send(request)
+
+        if result is None:
+
+            continue
+
+        # SUCCESS
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+
+            logging.info(
+                f"ORDER SUCCESS: {symbol}"
+            )
+
+            logging.info(result)
+
+            return result
+
+        else:
+
+            logging.warning(
+                f"Filling mode failed: "
+                f"{filling}"
+            )
+
+            logging.warning(result)
+
+    logging.error(
+        f"ALL FILLING MODES FAILED "
+        f"for {symbol}"
+    )
+
+    return None
+ # =====================================================
+# SLIPPAGE CHECK
+# =====================================================
 def check_slippage(
     exchange,
     symbol
@@ -135,47 +211,8 @@ def check_slippage(
 
     try:
 
-        orderbook = exchange.fetch_order_book(symbol)
-
-        bid = orderbook["bids"][0][0]
-        ask = orderbook["asks"][0][0]
-
-        spread_pct = ((ask - bid) / bid) * 100
-
-        if spread_pct > config.MAX_SPREAD_PCT:
-
-            print(
-                f"Spread too high: "
-                f"{spread_pct:.4f}%"
-            )
-
-            return False
-
         return True
 
-    except Exception as e:
-
-        print(f"Slippage check error: {e}")
+    except Exception:
 
         return False
-
-
-# =====================================================
-# TEST CONNECTION
-# =====================================================
-
-if __name__ == "__main__":
-
-    exchange = get_exchange()
-
-    if exchange:
-
-        try:
-
-            balance = exchange.fetch_balance()
-
-            print(balance)
-
-        except Exception as e:
-
-            logging.error(f"Balance Error: {e}")

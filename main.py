@@ -1,6 +1,5 @@
 import time
 import logging
-import os
 import threading
 
 import config
@@ -21,11 +20,13 @@ from strategy import (
 )
 
 from risk_manager import RiskManager
-from load_position import load_position
+
+from load_position import (
+    load_position
+)
 
 from telegram_utils import (
     send_telegram_message,
-    send_telegram_photo,
     send_equity_update,
     send_error_alert,
 )
@@ -48,32 +49,54 @@ logging.basicConfig(
 # =========================================================
 def set_bot_status(status):
 
-    with open("bot_status.txt", "w") as f:
-        f.write(status)
+    try:
+
+        with open(
+            "bot_status.txt",
+            "w"
+        ) as f:
+
+            f.write(status)
+
+    except Exception as e:
+
+        logging.error(
+            f"Status file error: {e}"
+        )
 
 # =========================================================
-# LOAD POSITIONS
+# RESTORE POSITIONS
 # =========================================================
 def restore_positions():
 
-    saved_position = load_position()
+    try:
 
-    if saved_position:
+        saved_position = load_position()
 
-        positions[config.SYMBOL] = saved_position
+        if saved_position:
 
-        logging.info(
-            "Restored saved position."
-        )
+            positions[
+                config.SYMBOL
+            ] = saved_position
 
-    else:
+            logging.info(
+                "Restored saved position."
+            )
 
-        logging.info(
-            "No saved position found."
+        else:
+
+            logging.info(
+                "No saved position found."
+            )
+
+    except Exception as e:
+
+        logging.error(
+            f"Restore position error: {e}"
         )
 
 # =========================================================
-# SYMBOL BOT
+# RUN SYMBOL BOT
 # =========================================================
 def run_symbol_bot(symbol):
 
@@ -84,7 +107,7 @@ def run_symbol_bot(symbol):
     )
 
     # =====================================================
-    # EXCHANGE
+    # CONNECT EXCHANGE
     # =====================================================
     exchange = get_exchange()
 
@@ -108,7 +131,7 @@ def run_symbol_bot(symbol):
     )
 
     # =====================================================
-    # TELEGRAM ALERT
+    # TELEGRAM STARTUP
     # =====================================================
     if config.USE_TELEGRAM:
 
@@ -130,7 +153,7 @@ def run_symbol_bot(symbol):
         try:
 
             # =================================================
-            # FETCH DATA
+            # FETCH OHLCV
             # =================================================
             try:
 
@@ -171,26 +194,40 @@ def run_symbol_bot(symbol):
             # =================================================
             # SAVE MARKET DATA
             # =================================================
-            safe_symbol = symbol.replace("/", "_")
+            try:
 
-            df.to_csv(
-                f"market_data_{safe_symbol}.csv",
-                index=False
-            )
+                safe_symbol = (
+                    symbol.replace("/", "_")
+                )
 
-            df.to_csv(
-                "market_data.csv",
-                index=False
-            )
+                df.to_csv(
+                    f"market_data_{safe_symbol}.csv",
+                    index=False
+                )
+
+                df.to_csv(
+                    "market_data.csv",
+                    index=False
+                )
+
+            except Exception as e:
+
+                logging.error(
+                    f"CSV save error: {e}"
+                )
 
             # =================================================
-            # INDICATORS
+            # ADD INDICATORS
             # =================================================
             df = add_indicators(df)
 
             df = df.dropna()
 
             if len(df) < 3:
+
+                logging.warning(
+                    f"{symbol} Not enough candles."
+                )
 
                 time.sleep(
                     config.MAIN_LOOP_SLEEP
@@ -201,34 +238,51 @@ def run_symbol_bot(symbol):
             # =================================================
             # PRICE
             # =================================================
-            price = df["close"].iloc[-1]
+            price = (
+                df["close"].iloc[-1]
+            )
 
             window_df = df.iloc[-3:]
 
-            current_position = positions.get(symbol)
+            # =================================================
+            # CURRENT POSITION
+            # =================================================
+            current_position = (
+                positions.get(symbol)
+            )
 
             # =================================================
             # UPDATE POSITION
             # =================================================
             if current_position is not None:
 
-                current_position = update_trailing_stop(
-                    current_position,
-                    price
+                current_position = (
+                    update_trailing_stop(
+                        current_position,
+                        price
+                    )
                 )
 
-                current_position = handle_exit(
-                    current_position,
-                    price,
-                    rm
+                current_position = (
+                    handle_exit(
+                        current_position,
+                        price,
+                        rm
+                    )
                 )
 
-                positions[symbol] = current_position
+                positions[symbol] = (
+                    current_position
+                )
 
             # =================================================
             # RISK CHECK
             # =================================================
             if not rm.can_trade():
+
+                logging.warning(
+                    f"{symbol} Cooldown active."
+                )
 
                 time.sleep(
                     config.MAIN_LOOP_SLEEP
@@ -255,13 +309,15 @@ def run_symbol_bot(symbol):
                 continue
 
             # =================================================
-            # ENTRY
+            # HANDLE ENTRY
             # =================================================
-            new_position = handle_entry(
-                window_df,
-                price,
-                rm,
-                current_position
+            new_position = (
+                handle_entry(
+                    window_df,
+                    price,
+                    rm,
+                    current_position
+                )
             )
 
             # =================================================
@@ -272,9 +328,13 @@ def run_symbol_bot(symbol):
                 and current_position is None
             ):
 
-                side = new_position["side"]
+                side = (
+                    new_position["side"]
+                )
 
-                amount = new_position["amount"]
+                amount = (
+                    new_position["amount"]
+                )
 
                 order = None
 
@@ -284,7 +344,7 @@ def run_symbol_bot(symbol):
                 if config.PAPER_TRADING:
 
                     logging.info(
-                        f"{symbol} PAPER TRADE"
+                        f"{symbol} PAPER TRADE EXECUTED"
                     )
 
                     order = {
@@ -296,33 +356,50 @@ def run_symbol_bot(symbol):
                 # =============================================
                 else:
 
-                    if side == "long":
+                    try:
 
-                        order = place_market_order(
-                            exchange,
-                            symbol,
-                            "buy",
-                            amount
-                        )
+                        if side == "long":
 
-                    elif side == "short":
+                            order = (
+                                place_market_order(
+                                    exchange,
+                                    symbol,
+                                    "buy",
+                                    amount
+                                )
+                            )
 
-                        order = place_market_order(
-                            exchange,
-                            symbol,
-                            "sell",
-                            amount
+                        elif side == "short":
+
+                            order = (
+                                place_market_order(
+                                    exchange,
+                                    symbol,
+                                    "sell",
+                                    amount
+                                )
+                            )
+
+                    except Exception as e:
+
+                        logging.error(
+                            f"{symbol} order error: {e}"
                         )
 
                 # =============================================
-                # SUCCESS
+                # ORDER SUCCESS
                 # =============================================
                 if order is not None:
+
+                    new_position["symbol"] = symbol
 
                     positions[symbol] = new_position
 
                     try:
 
+                        # =====================================
+                        # LOG TRADE
+                        # =====================================
                         trade_logger.log_trade(
                             symbol=symbol,
                             side=side,
@@ -331,14 +408,39 @@ def run_symbol_bot(symbol):
                             pnl=0
                         )
 
+                        # =====================================
+                        # SAVE POSITION
+                        # =====================================
+                        trade_logger.save_position(
+                            symbol=symbol,
+                            side=side,
+                            entry_price=price,
+                            amount=amount
+                        )
+
+                        logging.info(
+                            f"{symbol} position saved."
+                        )
+
                     except Exception as e:
 
                         logging.error(
                             f"Trade logger error: {e}"
                         )
 
-                    rm.record_trade()
+                    # =========================================
+                    # RECORD TRADE
+                    # =========================================
+                    try:
 
+                        rm.record_trade()
+
+                    except Exception:
+                        pass
+
+                    # =========================================
+                    # EQUITY UPDATE
+                    # =========================================
                     try:
 
                         send_equity_update(
@@ -348,12 +450,16 @@ def run_symbol_bot(symbol):
                     except Exception:
                         pass
 
+                    # =========================================
+                    # TELEGRAM ALERT
+                    # =========================================
                     if config.USE_TELEGRAM:
 
                         try:
 
                             send_telegram_message(
-                                f"📈 {symbol}\n"
+                                f"📈 NEW TRADE\n\n"
+                                f"Symbol: {symbol}\n"
                                 f"Side: {side}\n"
                                 f"Price: {price}"
                             )
@@ -362,11 +468,11 @@ def run_symbol_bot(symbol):
                             pass
 
             # =================================================
-            # LOGGING
+            # STATUS LOG
             # =================================================
             logging.info(
                 f"{symbol} | "
-                f"Price: {price:.2f}"
+                f"Price: {price:.5f}"
             )
 
             # =================================================
@@ -448,6 +554,7 @@ def start_bot():
     )
 
     while True:
+
         time.sleep(60)
 
 # =========================================================

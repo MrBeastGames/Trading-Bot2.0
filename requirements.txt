@@ -9,3 +9,4 @@ python-dotenv
 python-telegram-bot
 textblob
 ta
+MetaTrader5

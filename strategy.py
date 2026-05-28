@@ -17,6 +17,22 @@ def add_indicators(
     df = df.copy()
 
     # =====================================================
+    # FOREX VOLUME FIX
+    # MT5 uses tick_volume instead of volume
+    # =====================================================
+    if "volume" not in df.columns:
+
+        if "tick_volume" in df.columns:
+
+            df["volume"] = (
+                df["tick_volume"]
+            )
+
+        else:
+
+            df["volume"] = 0
+
+    # =====================================================
     # FAST EMA
     # =====================================================
     df["ema_fast"] = (
@@ -170,7 +186,7 @@ def handle_entry(
     # VOLUME FILTER
     # =====================================================
     high_volume = (
-        volume_now > volume_avg
+        volume_now >= volume_avg
     )
 
     # =====================================================
@@ -192,21 +208,19 @@ def handle_entry(
     # =====================================================
     # DEBUG LOGS
     # =====================================================
+    print("================================")
     print("FAST NOW:", fast_now)
     print("SLOW NOW:", slow_now)
     print("RSI:", rsi_now)
+    print("ATR:", atr_now)
     print("HIGH VOLUME:", high_volume)
     print("BULLISH CROSS:", bullish_cross)
+    print("================================")
 
     # =====================================================
     # FINAL LONG ENTRY
     # =====================================================
-    if (
-        bullish_cross
-        and bullish_trend
-        and good_rsi
-        and high_volume
-    ):
+    if True:
 
         amount = rm.get_position_size(
             price
@@ -244,7 +258,6 @@ def handle_entry(
 
     return None
 
-
 # =========================================================
 # EXIT LOGIC
 # =========================================================
@@ -270,96 +283,106 @@ def handle_exit(
     trail = position.get("trail")
 
     # =====================================================
-    # LONG PNL
+    # CALCULATE PNL
     # =====================================================
     if side == "long":
 
-        pnl = amount * (
-            price - entry
+        pnl = (
+            (price - entry)
+            * amount
+            * 1000
         )
 
     else:
 
-        pnl = amount * (
-            entry - price
+        pnl = (
+            (entry - price)
+            * amount
+            * 1000
         )
 
     # =====================================================
-    # STOP LOSS
+    # CLOSE CONDITIONS
     # =====================================================
+    should_close = False
+
+    close_reason = ""
+
+    # STOP LOSS
     if (
         side == "long"
         and price <= stop_loss
     ):
 
-        rm.realize(pnl)
+        should_close = True
+        close_reason = "STOP LOSS"
 
-        log_trade(
-            side=side,
-            entry_price=entry,
-            exit_price=price,
-            amount=amount,
-            pnl=pnl,
-            equity=rm.capital,
-        )
-
-        clear_position()
-
-        print("STOP LOSS HIT")
-
-        return None
-
-    # =====================================================
     # TAKE PROFIT
-    # =====================================================
-    if (
+    elif (
         side == "long"
         and price >= take_profit
     ):
 
-        rm.realize(pnl)
+        should_close = True
+        close_reason = "TAKE PROFIT"
 
-        log_trade(
-            side=side,
-            entry_price=entry,
-            exit_price=price,
-            amount=amount,
-            pnl=pnl,
-            equity=rm.capital,
-        )
-
-        clear_position()
-
-        print("TAKE PROFIT HIT")
-
-        return None
-
-    # =====================================================
     # TRAILING STOP
-    # =====================================================
-    if (
+    elif (
         trail is not None
         and price <= trail
     ):
 
-        pnl = amount * (
-            trail - entry
-        )
+        should_close = True
+        close_reason = "TRAILING STOP"
+
+    # =====================================================
+    # CLOSE POSITION
+    # =====================================================
+    if should_close:
 
         rm.realize(pnl)
 
-        log_trade(
-            side=side,
-            entry_price=entry,
-            exit_price=trail,
-            amount=amount,
-            pnl=pnl,
-            equity=rm.capital,
+        try:
+
+            import sqlite3
+
+            conn = sqlite3.connect(
+                "trading_bot.db"
+            )
+
+            cursor = conn.cursor()
+
+            # =============================================
+            # UPDATE POSITION
+            # =============================================
+            cursor.execute(
+                """
+                UPDATE positions
+                SET current_price = ?,
+                    pnl = ?
+                WHERE symbol = ?
+                """,
+                (
+                    float(price),
+                    float(pnl),
+                    position.get("symbol", "")
+                )
+            )
+
+            conn.commit()
+
+            conn.close()
+
+        except Exception as e:
+
+            print(
+                "DATABASE UPDATE ERROR:",
+                e
+            )
+
+        print(
+            f"{close_reason} HIT | PNL: {pnl}"
         )
-
-        clear_position()
-
-        print("TRAILING STOP HIT")
 
         return None
 
