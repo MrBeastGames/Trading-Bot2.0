@@ -7,9 +7,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =====================================================
-# EXCHANGE
+# EXCHANGE SETTINGS
 # =====================================================
 EXCHANGE_ID = "bitget"
+
+USE_TESTNET = False
+
+ENABLE_RATE_LIMIT = True
+
+API_TIMEOUT = 30000
+
+REQUEST_RETRY_DELAY = 15
 
 # =====================================================
 # PRIMARY SYMBOL
@@ -84,12 +92,10 @@ USE_TELEGRAM = True
 
 USE_DASHBOARD = True
 
-USE_TESTNET = False
-
 # =====================================================
 # LIVE TRADING SAFETY
 # =====================================================
-ENABLE_LIVE_TRADING = True
+ENABLE_LIVE_TRADING = False
 
 # =====================================================
 # OUTPUT FILES
@@ -103,12 +109,20 @@ EQUITY_PNG_PATH = "equity_curve.png"
 # =====================================================
 DATABASE_ENABLED = True
 
+DATABASE_NAME = "trading_bot.db"
+
 # =====================================================
 # DASHBOARD AUTH
 # =====================================================
-DASHBOARD_USERNAME = "admin"
+DASHBOARD_USERNAME = os.getenv(
+    "DASHBOARD_USERNAME",
+    "admin"
+)
 
-DASHBOARD_PASSWORD = "changeme"
+DASHBOARD_PASSWORD = os.getenv(
+    "DASHBOARD_PASSWORD",
+    "changeme"
+)
 
 # =====================================================
 # TELEGRAM
@@ -122,10 +136,7 @@ TELEGRAM_CHAT_ID = os.getenv(
 )
 
 # =====================================================
-# BITGET API
-# =====================================================
-# Use Railway Variables
-# NEVER hardcode real API keys
+# BITGET API KEYS
 # =====================================================
 API_KEY = os.getenv(
     "BITGET_API_KEY"
@@ -161,16 +172,7 @@ if not API_PASSWORD:
     )
 
 # =====================================================
-# RATE LIMIT PROTECTION
-# =====================================================
-ENABLE_RATE_LIMIT = True
-
-API_TIMEOUT = 30000
-
-REQUEST_RETRY_DELAY = 15
-
-# =====================================================
-# LOOP DELAYS
+# MAIN LOOP SETTINGS
 # =====================================================
 MAIN_LOOP_SLEEP = 15
 
@@ -191,7 +193,35 @@ PORT = int(
 # =====================================================
 LOG_LEVEL = "INFO"
 
-# =====================================================
-# DEBUG MODE
-# =====================================================
 DEBUG = False
+
+# =====================================================
+# STREAMLIT SETTINGS
+# =====================================================
+STREAMLIT_SERVER_PORT = PORT
+
+STREAMLIT_SERVER_ADDRESS = "0.0.0.0"
+
+# =====================================================
+# TELEGRAM ALERTS
+# =====================================================
+SEND_STARTUP_ALERTS = True
+
+SEND_ERROR_ALERTS = True
+
+SEND_TRADE_ALERTS = True
+
+# =====================================================
+# PAPER TRADING NOTICE
+# =====================================================
+if PAPER_TRADING:
+
+    print(
+        "INFO: Running in PAPER TRADING mode."
+    )
+
+else:
+
+    print(
+        "WARNING: LIVE TRADING ENABLED."
+    )
